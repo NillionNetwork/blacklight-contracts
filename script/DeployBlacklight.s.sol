@@ -48,14 +48,14 @@ contract DeployBlacklight is Script {
         address deployer = vm.addr(deployerPrivateKey);
 
         // Read configuration from environment or use defaults
-        uint256 unstakeDelay = vm.envOr("UNSTAKE_DELAY", uint256(7 days));
-        uint32 baseCommitteeSize = uint32(vm.envOr("BASE_COMMITTEE_SIZE", uint256(5)));
-        uint32 maxCommitteeSize = uint32(vm.envOr("MAX_COMMITTEE_SIZE", uint256(20)));
-        uint8 maxEscalations = uint8(vm.envOr("MAX_ESCALATIONS", uint256(3)));
-        uint16 quorumBps = uint16(vm.envOr("QUORUM_BPS", uint256(5000))); // 50%
-        uint16 verificationBps = uint16(vm.envOr("VERIFICATION_BPS", uint256(6667))); // 66.67%
-        uint256 responseWindow = vm.envOr("RESPONSE_WINDOW", uint256(1 hours));
-        uint256 jailDuration = vm.envOr("JAIL_DURATION", uint256(1 days));
+        uint256 unstakeDelay = vm.envOr("UNSTAKE_DELAY", uint256(1 days));
+        uint32 baseCommitteeSize = uint32(vm.envOr("BASE_COMMITTEE_SIZE", uint256(10))); // 10 operators
+        uint32 maxCommitteeSize = uint32(vm.envOr("MAX_COMMITTEE_SIZE", uint256(200))); // 200 operators
+        uint8 maxEscalations = uint8(vm.envOr("MAX_ESCALATIONS", uint256(3))); // 3 escalations
+        uint16 quorumBps = uint16(vm.envOr("QUORUM_BPS", uint256(9000))); // 90%
+        uint16 verificationBps = uint16(vm.envOr("VERIFICATION_BPS", uint256(7000))); // 70%
+        uint256 responseWindow = vm.envOr("RESPONSE_WINDOW", uint256(5 minutes));
+        uint256 jailDuration = vm.envOr("JAIL_DURATION", uint256(2 minutes));
         uint256 minOperatorStake = vm.envOr("MIN_OPERATOR_STAKE", uint256(10e6));
         bool useNoOpSlashing = vm.envOr("USE_NOOP_SLASHING", false);
         bool deployEmissions = vm.envOr("DEPLOY_EMISSIONS", false);
