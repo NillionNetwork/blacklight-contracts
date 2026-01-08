@@ -17,6 +17,19 @@ This repository contains the Solidity smart contracts for the Blacklight decentr
 
 ### Install dependencies
 
+### Install Foundry
+
+```bash
+# Install Foundry (forge, cast, anvil, chisel)
+curl -L https://foundry.paradigm.xyz | bash
+
+# Ensure foundryup is on your PATH (restart your shell if needed), then install binaries
+foundryup
+
+# Verify
+forge --version
+```
+
 ### Build
 
 ```shell
