@@ -1,0 +1,26 @@
+# Dockerfile for contract deployment using Foundry
+FROM ghcr.io/foundry-rs/foundry:latest AS foundry
+
+WORKDIR /app
+
+USER root
+# Install tooling needed by scripts and Foundry (git is required for submodules/deps)
+RUN apt-get update -y && apt-get install -y curl jq git
+
+COPY . .
+
+# Copy scripts
+COPY docker/start-anvil.sh /usr/local/bin/start-anvil.sh
+
+RUN chmod +x /app/script/*.sh && \
+    chown -R foundry:foundry /app/
+
+RUN chmod +x /usr/local/bin/start-anvil.sh && \
+    chown foundry:foundry /usr/local/bin/start-anvil.sh
+
+USER foundry
+
+RUN forge install
+RUN forge build
+
+ENTRYPOINT ["/usr/local/bin/start-anvil.sh"]
