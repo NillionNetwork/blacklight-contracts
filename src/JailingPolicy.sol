@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.22;
 
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "./Interfaces.sol";
@@ -9,7 +9,14 @@ interface IHeartbeatManagerPolicyView {
     function getRoundForPolicy(bytes32 heartbeatKey, uint8 round)
         external
         view
-        returns (bool finalized, ISlashingPolicy.Outcome outcome, bytes32 committeeRoot, address stakingOps, uint64 jailDurationSec);
+        returns (
+            bool finalized,
+            ISlashingPolicy.Outcome outcome,
+            bytes32 committeeRoot,
+            address stakingOps,
+            uint64 jailDurationSec,
+            uint32 committeeSize
+        );
 }
 
 /// @title JailingPolicy
@@ -24,6 +31,8 @@ contract JailingPolicy is ISlashingPolicy {
     error ZeroJailDuration();
     error CommitteeRootMismatch();
     error UnsortedMembers();
+    error ProofsLengthMismatch(uint256 operators, uint256 proofs);
+    error CommitteeSizeMismatch(uint256 got, uint256 expected);
 
     uint256 private constant RESPONDED_BIT = 1 << 2;
     uint256 private constant VERDICT_MASK = 0x3;
@@ -58,8 +67,8 @@ contract JailingPolicy is ISlashingPolicy {
         heartbeatManager = _heartbeatManager;
     }
 
-    function recordRound(bytes32 heartbeatKey, uint8 round, uint32 committeeSize) public {
-        (bool finalized, Outcome o2, bytes32 root2, address stakingOps, uint64 jailDurationSec) =
+    function recordRound(bytes32 heartbeatKey, uint8 round) public {
+        (bool finalized, Outcome o2, bytes32 root2, address stakingOps, uint64 jailDurationSec, uint32 committeeSize) =
             IHeartbeatManagerPolicyView(heartbeatManager).getRoundForPolicy(heartbeatKey, round);
 
         if (!finalized || root2 == bytes32(0)) revert RoundNotFinalized();
@@ -82,10 +91,10 @@ contract JailingPolicy is ISlashingPolicy {
         uint8 round,
         Outcome /*outcome*/,
         bytes32 /*committeeRoot*/,
-        uint32 committeeSize
+        uint32 /*committeeSize*/
     ) external override {
         if (msg.sender != heartbeatManager) revert NotHeartbeatManager();
-        recordRound(heartbeatKey, round, committeeSize);
+        recordRound(heartbeatKey, round);
     }
 
     function enforceJail(bytes32 heartbeatKey, uint8 round, address operator, bytes32[] calldata memberProof) public {
@@ -114,10 +123,14 @@ contract JailingPolicy is ISlashingPolicy {
         bytes32[][] calldata proofs
     ) external {
         uint256 n = operators.length;
-        if (n != proofs.length) revert NotInCommittee();
+        if (n != proofs.length) revert ProofsLengthMismatch(n, proofs.length);
         for (uint256 i = 0; i < n; ) {
+            if (enforced[heartbeatKey][round][operators[i]]) {
+                ++i;
+                continue;
+            }
             enforceJail(heartbeatKey, round, operators[i], proofs[i]);
-            unchecked { ++i; }
+            ++i;
         }
     }
 
@@ -127,7 +140,7 @@ contract JailingPolicy is ISlashingPolicy {
         RoundRecord memory rr = roundRecord[heartbeatKey][round];
         if (!rr.set) revert RoundNotFinalized();
         if (rr.jailDurationSec == 0) revert ZeroJailDuration();
-        if (sortedMembers.length != rr.committeeSize) revert UnsortedMembers();
+        if (sortedMembers.length != rr.committeeSize) revert CommitteeSizeMismatch(sortedMembers.length, rr.committeeSize);
 
         // Ensure strictly ascending + build leaves
         uint256 n = sortedMembers.length;
@@ -139,7 +152,7 @@ contract JailingPolicy is ISlashingPolicy {
             if (op == address(0) || op <= last) revert UnsortedMembers();
             last = op;
             leaves[i] = keccak256(abi.encodePacked(bytes1(0xA1), heartbeatManager, heartbeatKey, round, op));
-            unchecked { ++i; }
+            ++i;
         }
 
         bytes32 root = _computeMerkleRoot(leaves);
@@ -155,7 +168,7 @@ contract JailingPolicy is ISlashingPolicy {
                     emit JailEnforced(heartbeatKey, round, op, until);
                 }
             }
-            unchecked { ++i; }
+            ++i;
         }
     }
 
@@ -163,11 +176,10 @@ contract JailingPolicy is ISlashingPolicy {
         uint256 packed = IHeartbeatManagerPolicyView(heartbeatManager).getVotePacked(heartbeatKey, round, operator);
         bool responded = (packed & RESPONDED_BIT) != 0;
 
-        if (!responded) return true; // non-voter always jailable
+        if (!responded) return outcome != Outcome.Inconclusive;
 
         uint8 verdict = uint8(packed & VERDICT_MASK);
 
-        // For inconclusive, only non-voters are punished.
         if (outcome == Outcome.Inconclusive) return false;
 
         if (outcome == Outcome.ValidThreshold) {
@@ -196,7 +208,7 @@ contract JailingPolicy is ISlashingPolicy {
                 bytes32 left = leaves[idx];
                 bytes32 right = idx + 1 < len ? leaves[idx + 1] : left;
                 leaves[i] = _hashPair(left, right);
-                unchecked { ++i; }
+                ++i;
             }
             len = nextLen;
         }

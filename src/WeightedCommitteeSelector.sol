@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.22;
 
 import "./Interfaces.sol";
 
@@ -16,6 +16,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
     error InsufficientCommitteeVP(uint256 selectedVP, uint256 requiredVP);
     error SnapshotBlockUnavailable(uint64 snapshotId);
     error ZeroTotalVotingPower();
+    error ZeroMinCommitteeVP();
 
     uint32 private constant DEFAULT_MAX_ACTIVE_OPERATORS = 1000;
 
@@ -43,6 +44,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
     ) {
         if (address(_stakingOps) == address(0)) revert ZeroAddress();
         if (_admin == address(0)) revert ZeroAddress();
+        if (_minCommitteeVP == 0) revert ZeroMinCommitteeVP();
         if (_maxCommitteeSize == 0) revert ZeroMaxSize();
 
         stakingOps = _stakingOps;
@@ -55,6 +57,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
     }
 
     function setMinCommitteeVP(uint256 newVP) external onlyAdmin {
+        if (newVP == 0) revert ZeroMinCommitteeVP();
         emit MinCommitteeVPUpdated(minCommitteeVP, newVP);
         minCommitteeVP = newVP;
     }
@@ -97,7 +100,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
             stakes = new uint256[](n);
             for (uint256 i = 0; i < n; ) {
                 stakes[i] = stakingOps.stakeAt(pool[i], snapshotId);
-                unchecked { ++i; }
+                ++i;
             }
         }
 
@@ -109,7 +112,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
         uint256 totalVP;
         for (uint256 i = 0; i < n; ) {
             totalVP += stakes[i];
-            unchecked { ++i; }
+            ++i;
         }
         if (totalVP == 0) revert ZeroTotalVotingPower();
 
@@ -117,12 +120,12 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
         uint256[] memory bit = new uint256[](n + 1);
         for (uint256 i = 1; i <= n; ) {
             bit[i] = stakes[i - 1];
-            unchecked { ++i; }
+            ++i;
         }
         for (uint256 i = 1; i <= n; ) {
             uint256 j = i + _lsb(i);
             if (j <= n) bit[j] += bit[i];
-            unchecked { ++i; }
+            ++i;
         }
 
         members = new address[](k);
@@ -153,14 +156,14 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
             _bitSub(bit, idx1, w);
             remainingVP -= w;
 
-            unchecked { ++picked; }
+            ++picked;
         }
 
         if (picked < k) {
             address[] memory trimmed = new address[](picked);
             for (uint32 i = 0; i < picked; ) {
                 trimmed[i] = members[i];
-                unchecked { ++i; }
+                ++i;
             }
             members = trimmed;
         }
@@ -196,7 +199,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
                 heapStake[heapSize] = s;
                 heapAddr[heapSize] = op;
                 _heapSiftUp(heapStake, heapAddr, heapSize);
-                unchecked { ++heapSize; }
+                ++heapSize;
             } else {
                 if (_isBetter(s, op, heapStake[0], heapAddr[0])) {
                     heapStake[0] = s;
@@ -204,7 +207,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
                     _heapSiftDown(heapStake, heapAddr, heapSize, 0);
                 }
             }
-            unchecked { ++i; }
+            ++i;
         }
 
         top = new address[](heapSize);
@@ -212,7 +215,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
         for (uint256 i = 0; i < heapSize; ) {
             top[i] = heapAddr[i];
             topStakes[i] = heapStake[i];
-            unchecked { ++i; }
+            ++i;
         }
     }
 

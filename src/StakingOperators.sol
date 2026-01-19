@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.22;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -31,6 +31,11 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     error StakeOverflow();
     error BatchTooLarge();
     error InvalidUnstakeDelay();
+    error UnauthorizedStaker();
+    error StakerAlreadyBound();
+    error InvalidMaxActiveOperators();
+    error TooManyActiveOperators();
+    error InvalidProtocolConfig(address candidate);
 
     struct StakeCheckpoint { uint64 fromBlock; uint224 stake; }
     struct Unbonding { address staker; IStakingOperators.Tranche[] tranches; }
@@ -41,10 +46,13 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     uint256 private constant MAX_BATCH_POKE = 50;
     uint256 private constant MIN_DELAY = 1 days;
     uint256 private constant MAX_DELAY = 365 days;
+    uint256 private constant DEFAULT_MAX_ACTIVE_OPERATORS = 1000;
 
     IERC20 private immutable _stakingToken;
     uint256 public override unstakeDelay;
+    /// @dev Operators must withdraw matured tranches to free capacity for future unstake requests.
     uint256 public constant MAX_TRANCHES_PER_OPERATOR = 32;
+    uint256 public maxActiveOperators;
 
     IProtocolConfig public protocolConfig;
 
@@ -57,6 +65,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     address public override heartbeatManager;
 
     mapping(address => address) public override operatorStaker;
+    mapping(address => address) public approvedStaker;
     mapping(address => Unbonding) private _unbondings;
 
     mapping(address => uint64) private _jailedUntil;
@@ -79,6 +88,9 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     event SnapshotterUpdated(address oldSnapshotter, address newSnapshotter);
     event HeartbeatManagerUpdated(address oldHeartbeatManager, address newHeartbeatManager);
     event ActiveStatusUpdated(address indexed operator, bool isActive);
+    event StakerApproved(address indexed operator, address indexed staker);
+    event MaxActiveOperatorsUpdated(uint256 oldCap, uint256 newCap);
+    event SnapshotCreated(uint64 snapshotId, address indexed caller);
 
     constructor(IERC20 token_, address admin, uint256 initialUnstakeDelay) {
         if (address(token_) == address(0)) revert ZeroAddress();
@@ -87,6 +99,8 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         if (initialUnstakeDelay < MIN_DELAY || initialUnstakeDelay > MAX_DELAY) revert InvalidUnstakeDelay();
         unstakeDelay = initialUnstakeDelay;
+        maxActiveOperators = DEFAULT_MAX_ACTIVE_OPERATORS;
+        emit MaxActiveOperatorsUpdated(0, DEFAULT_MAX_ACTIVE_OPERATORS);
     }
 
     function pause() external onlyRole(DEFAULT_ADMIN_ROLE) { _pause(); }
@@ -94,6 +108,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
 
     function setProtocolConfig(IProtocolConfig newConfig) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (address(newConfig) == address(0)) revert ZeroAddress();
+        if (!_isProtocolConfig(address(newConfig))) revert InvalidProtocolConfig(address(newConfig));
         address old = address(protocolConfig);
         protocolConfig = newConfig;
         emit ProtocolConfigUpdated(old, address(newConfig));
@@ -103,6 +118,12 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         if (newDelay < MIN_DELAY || newDelay > MAX_DELAY) revert InvalidUnstakeDelay();
         emit UnstakeDelayUpdated(unstakeDelay, newDelay);
         unstakeDelay = newDelay;
+    }
+
+    function setMaxActiveOperators(uint256 newCap) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newCap == 0) revert InvalidMaxActiveOperators();
+        emit MaxActiveOperatorsUpdated(maxActiveOperators, newCap);
+        maxActiveOperators = newCap;
     }
 
     function setSnapshotter(address newSnapshotter) external override onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -123,6 +144,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         if (block.number <= 1) revert NotReady();
         snapshotId = uint64(block.number - 1);
         currentSnapshotId = snapshotId;
+        emit SnapshotCreated(snapshotId, msg.sender);
     }
 
     function stakeAt(address operator, uint64 snapshotId) public view override returns (uint256) {
@@ -177,6 +199,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         bool isInSet = idxPlus1 != 0;
 
         if (shouldBeActive && !isInSet) {
+            if (_activeOperators.length >= maxActiveOperators) revert TooManyActiveOperators();
             _activeOperators.push(operator);
             _activeIndexPlus1[operator] = _activeOperators.length;
             emit ActiveStatusUpdated(operator, true);
@@ -202,7 +225,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         if (operators.length > MAX_BATCH_POKE) revert BatchTooLarge();
         for (uint256 i = 0; i < operators.length; ) {
             _setActiveInSet(operators[i], _computeIsActive(operators[i]));
-            unchecked { ++i; }
+            ++i;
         }
     }
 
@@ -212,14 +235,29 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         return _activeOperators;
     }
 
+    function approveStaker(address staker) external whenNotPaused {
+        if (staker == address(0)) revert ZeroAddress();
+        if (operatorStaker[msg.sender] != address(0)) revert StakerAlreadyBound();
+        approvedStaker[msg.sender] = staker;
+        emit StakerApproved(msg.sender, staker);
+    }
+
     function stakeTo(address operator, uint256 amount) external override nonReentrant whenNotPaused {
         if (operator == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
         address currentStaker = operatorStaker[operator];
         if (currentStaker == address(0)) {
+            IProtocolConfig cfg = protocolConfig;
+            if (address(cfg) != address(0)) {
+                uint256 minStake = cfg.minOperatorStake();
+                if (minStake != 0 && amount < minStake) revert InsufficientStakeForActivation();
+            }
+            address approved = approvedStaker[operator];
+            if (approved != address(0) && msg.sender != operator && msg.sender != approved) revert UnauthorizedStaker();
             operatorStaker[operator] = msg.sender;
             _unbondings[operator].staker = msg.sender;
+            if (approved != address(0)) approvedStaker[operator] = address(0);
         } else if (currentStaker != msg.sender) revert DifferentStaker();
 
         _stakingToken.safeTransferFrom(msg.sender, address(this), amount);
@@ -236,7 +274,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         if (operator == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
         if (operatorStaker[operator] != msg.sender) revert NotStaker();
-
+        // If MAX_TRANCHES_PER_OPERATOR is reached, callers must withdraw matured tranches before requesting more.
         uint256 bal = _operatorStake[operator];
         if (bal < amount) revert InsufficientStake();
         if (block.timestamp < _jailedUntil[operator]) revert OperatorJailed();
@@ -257,8 +295,14 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
 
         Unbonding storage u = _unbondings[operator];
         uint256 len = u.tranches.length;
-        if (len == 0) revert NoUnbonding();
         if (msg.sender != u.staker) revert NotStaker();
+        if (len == 0) {
+            if (_operatorStake[operator] != 0) revert NoUnbonding();
+            operatorStaker[operator] = address(0);
+            u.staker = address(0);
+            _setActiveInSet(operator, _computeIsActive(operator));
+            return;
+        }
 
         uint256 payout;
         uint256 writeIndex;
@@ -266,8 +310,11 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         for (uint256 i = 0; i < len; ) {
             IStakingOperators.Tranche memory t = u.tranches[i];
             if (block.timestamp >= t.releaseTime) payout += t.amount;
-            else { u.tranches[writeIndex] = t; unchecked { ++writeIndex; } }
-            unchecked { ++i; }
+            else {
+                u.tranches[writeIndex] = t;
+                ++writeIndex;
+            }
+            ++i;
         }
         while (u.tranches.length > writeIndex) u.tranches.pop();
         if (payout == 0) revert NotReady();
@@ -372,9 +419,9 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
                 } else {
                     u.tranches[writeIndex] = t;
                 }
-                unchecked { ++writeIndex; }
+                ++writeIndex;
             }
-            unchecked { ++i; }
+            ++i;
         }
 
         while (u.tranches.length > writeIndex) u.tranches.pop();
@@ -406,5 +453,11 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         } else {
             ckpts.push(StakeCheckpoint({fromBlock: blockNum, stake: boundedStake}));
         }
+    }
+
+    function _isProtocolConfig(address candidate) internal view returns (bool) {
+        if (candidate.code.length == 0) return false;
+        (bool ok, ) = candidate.staticcall(abi.encodeWithSelector(IProtocolConfig.quorumBps.selector));
+        return ok;
     }
 }

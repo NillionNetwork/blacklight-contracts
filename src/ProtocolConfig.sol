@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.22;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./Interfaces.sol";
@@ -11,6 +11,13 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
     error InvalidBps(uint256 bps);
     error InvalidCommitteeCap(uint32 base, uint32 max);
     error InvalidMaxVoteBatchSize(uint256 maxBatch);
+    error InvalidModuleAddress(address module);
+    error ZeroQuorumBps();
+    error ZeroVerificationBps();
+    error ZeroResponseWindow();
+    error ZeroJailDuration();
+    error ZeroHeartbeatBond();
+    error DurationTooLarge(uint256 duration);
 
     // Modules
     address private _stakingOps;
@@ -33,6 +40,8 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
     uint256 private _maxVoteBatchSize;
 
     uint256 private _minOperatorStake;
+    uint256 private _heartbeatBond;
+    uint16 private _heartbeatBondBurnBps;
 
     event ModulesUpdated(address stakingOps, address selector, address slashing, address reward);
     event ParamsUpdated(
@@ -45,7 +54,9 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         uint256 responseWindow,
         uint256 jailDuration,
         uint256 maxVoteBatchSize,
-        uint256 minOperatorStake
+        uint256 minOperatorStake,
+        uint256 heartbeatBond,
+        uint16 heartbeatBondBurnBps
     );
 
     constructor(
@@ -67,14 +78,30 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         uint256 jailDuration_,
         // batching / staking
         uint256 maxVoteBatchSize_,
-        uint256 minOperatorStake_
+        uint256 minOperatorStake_,
+        // heartbeat bond
+        uint256 heartbeatBond_,
+        uint16 heartbeatBondBurnBps_
     ) Ownable(owner_) {
         if (stakingOps_ == address(0) || selector_ == address(0) || slashing_ == address(0) || reward_ == address(0)) {
             revert ZeroAddress();
         }
+        _requireContract(stakingOps_);
+        _requireContract(selector_);
+        _requireContract(slashing_);
+        _requireContract(reward_);
 
+        if (quorumBps_ == 0) revert ZeroQuorumBps();
+        if (verificationBps_ == 0) revert ZeroVerificationBps();
+        if (responseWindow_ == 0) revert ZeroResponseWindow();
+        if (jailDuration_ == 0) revert ZeroJailDuration();
+        if (heartbeatBond_ == 0) revert ZeroHeartbeatBond();
         _validateBps(quorumBps_);
         _validateBps(verificationBps_);
+        _validateBps(committeeSizeGrowthBps_);
+        _validateBps(heartbeatBondBurnBps_);
+        _validateDuration(responseWindow_);
+        _validateDuration(jailDuration_);
         _validateCommitteeCaps(baseCommitteeSize_, maxCommitteeSize_);
         _validateMaxVoteBatch(maxVoteBatchSize_);
 
@@ -96,6 +123,8 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
 
         _maxVoteBatchSize = maxVoteBatchSize_;
         _minOperatorStake = minOperatorStake_;
+        _heartbeatBond = heartbeatBond_;
+        _heartbeatBondBurnBps = heartbeatBondBurnBps_;
 
         emit ModulesUpdated(stakingOps_, selector_, slashing_, reward_);
         emit ParamsUpdated(
@@ -108,7 +137,9 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
             responseWindow_,
             jailDuration_,
             maxVoteBatchSize_,
-            minOperatorStake_
+            minOperatorStake_,
+            heartbeatBond_,
+            heartbeatBondBurnBps_
         );
     }
 
@@ -123,6 +154,10 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
     function _validateMaxVoteBatch(uint256 maxBatch) internal pure {
         // 0 = unlimited (still limited by HeartbeatManager hard limit); otherwise require sane cap.
         if (maxBatch != 0 && maxBatch > 500) revert InvalidMaxVoteBatchSize(maxBatch);
+    }
+
+    function _validateDuration(uint256 duration) internal pure {
+        if (duration > type(uint64).max) revert DurationTooLarge(duration);
     }
 
     // Modules
@@ -148,6 +183,8 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
     // Misc
     function maxVoteBatchSize() external view override returns (uint256) { return _maxVoteBatchSize; }
     function minOperatorStake() external view override returns (uint256) { return _minOperatorStake; }
+    function heartbeatBond() external view override returns (uint256) { return _heartbeatBond; }
+    function heartbeatBondBurnBps() external view override returns (uint16) { return _heartbeatBondBurnBps; }
 
     // Admin setters
 
@@ -155,6 +192,10 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         if (stakingOps_ == address(0) || selector_ == address(0) || slashing_ == address(0) || reward_ == address(0)) {
             revert ZeroAddress();
         }
+        _requireContract(stakingOps_);
+        _requireContract(selector_);
+        _requireContract(slashing_);
+        _requireContract(reward_);
         _stakingOps = stakingOps_;
         _selector = selector_;
         _slashing = slashing_;
@@ -172,10 +213,21 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         uint256 responseWindow_,
         uint256 jailDuration_,
         uint256 maxVoteBatchSize_,
-        uint256 minOperatorStake_
+        uint256 minOperatorStake_,
+        uint256 heartbeatBond_,
+        uint16 heartbeatBondBurnBps_
     ) external onlyOwner {
+        if (quorumBps_ == 0) revert ZeroQuorumBps();
+        if (verificationBps_ == 0) revert ZeroVerificationBps();
+        if (responseWindow_ == 0) revert ZeroResponseWindow();
+        if (jailDuration_ == 0) revert ZeroJailDuration();
+        if (heartbeatBond_ == 0) revert ZeroHeartbeatBond();
         _validateBps(quorumBps_);
         _validateBps(verificationBps_);
+        _validateBps(committeeSizeGrowthBps_);
+        _validateBps(heartbeatBondBurnBps_);
+        _validateDuration(responseWindow_);
+        _validateDuration(jailDuration_);
         _validateCommitteeCaps(baseCommitteeSize_, maxCommitteeSize_);
         _validateMaxVoteBatch(maxVoteBatchSize_);
 
@@ -192,6 +244,8 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
 
         _maxVoteBatchSize = maxVoteBatchSize_;
         _minOperatorStake = minOperatorStake_;
+        _heartbeatBond = heartbeatBond_;
+        _heartbeatBondBurnBps = heartbeatBondBurnBps_;
 
         emit ParamsUpdated(
             baseCommitteeSize_,
@@ -203,7 +257,13 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
             responseWindow_,
             jailDuration_,
             maxVoteBatchSize_,
-            minOperatorStake_
+            minOperatorStake_,
+            heartbeatBond_,
+            heartbeatBondBurnBps_
         );
+    }
+
+    function _requireContract(address module) internal view {
+        if (module.code.length == 0) revert InvalidModuleAddress(module);
     }
 }

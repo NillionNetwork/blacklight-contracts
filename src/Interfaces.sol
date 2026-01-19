@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.22;
 
 /// @notice Minimal shared interfaces used by the RC contracts.
 /// @dev Keep this file synchronized with the concrete implementations.
@@ -39,6 +39,8 @@ interface IProtocolConfig {
     // Misc
     function maxVoteBatchSize() external view returns (uint256);
     function minOperatorStake() external view returns (uint256);
+    function heartbeatBond() external view returns (uint256);
+    function heartbeatBondBurnBps() external view returns (uint16);
 }
 
 interface ISlashingPolicy {
