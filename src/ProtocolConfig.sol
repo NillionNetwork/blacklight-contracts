@@ -16,7 +16,6 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
     error ZeroVerificationBps();
     error ZeroResponseWindow();
     error ZeroJailDuration();
-    error ZeroHeartbeatBond();
     error DurationTooLarge(uint256 duration);
 
     // Modules
@@ -40,10 +39,10 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
     uint256 private _maxVoteBatchSize;
 
     uint256 private _minOperatorStake;
-    uint256 private _heartbeatBond;
-    uint16 private _heartbeatBondBurnBps;
+    string private _nodeVersion;
 
     event ModulesUpdated(address stakingOps, address selector, address slashing, address reward);
+    event NodeVersionUpdated(string oldVersion, string newVersion);
     event ParamsUpdated(
         uint32 baseCommitteeSize,
         uint32 committeeSizeGrowthBps,
@@ -54,9 +53,7 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         uint256 responseWindow,
         uint256 jailDuration,
         uint256 maxVoteBatchSize,
-        uint256 minOperatorStake,
-        uint256 heartbeatBond,
-        uint16 heartbeatBondBurnBps
+        uint256 minOperatorStake
     );
 
     constructor(
@@ -78,10 +75,7 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         uint256 jailDuration_,
         // batching / staking
         uint256 maxVoteBatchSize_,
-        uint256 minOperatorStake_,
-        // heartbeat bond
-        uint256 heartbeatBond_,
-        uint16 heartbeatBondBurnBps_
+        uint256 minOperatorStake_
     ) Ownable(owner_) {
         if (stakingOps_ == address(0) || selector_ == address(0) || slashing_ == address(0) || reward_ == address(0)) {
             revert ZeroAddress();
@@ -95,11 +89,9 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         if (verificationBps_ == 0) revert ZeroVerificationBps();
         if (responseWindow_ == 0) revert ZeroResponseWindow();
         if (jailDuration_ == 0) revert ZeroJailDuration();
-        if (heartbeatBond_ == 0) revert ZeroHeartbeatBond();
         _validateBps(quorumBps_);
         _validateBps(verificationBps_);
         _validateBps(committeeSizeGrowthBps_);
-        _validateBps(heartbeatBondBurnBps_);
         _validateDuration(responseWindow_);
         _validateDuration(jailDuration_);
         _validateCommitteeCaps(baseCommitteeSize_, maxCommitteeSize_);
@@ -123,8 +115,6 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
 
         _maxVoteBatchSize = maxVoteBatchSize_;
         _minOperatorStake = minOperatorStake_;
-        _heartbeatBond = heartbeatBond_;
-        _heartbeatBondBurnBps = heartbeatBondBurnBps_;
 
         emit ModulesUpdated(stakingOps_, selector_, slashing_, reward_);
         emit ParamsUpdated(
@@ -137,9 +127,7 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
             responseWindow_,
             jailDuration_,
             maxVoteBatchSize_,
-            minOperatorStake_,
-            heartbeatBond_,
-            heartbeatBondBurnBps_
+            minOperatorStake_
         );
     }
 
@@ -183,8 +171,7 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
     // Misc
     function maxVoteBatchSize() external view override returns (uint256) { return _maxVoteBatchSize; }
     function minOperatorStake() external view override returns (uint256) { return _minOperatorStake; }
-    function heartbeatBond() external view override returns (uint256) { return _heartbeatBond; }
-    function heartbeatBondBurnBps() external view override returns (uint16) { return _heartbeatBondBurnBps; }
+    function nodeVersion() external view override returns (string memory) { return _nodeVersion; }
 
     // Admin setters
 
@@ -203,6 +190,12 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         emit ModulesUpdated(stakingOps_, selector_, slashing_, reward_);
     }
 
+    function setNodeVersion(string calldata newVersion) external onlyOwner {
+        string memory oldVersion = _nodeVersion;
+        _nodeVersion = newVersion;
+        emit NodeVersionUpdated(oldVersion, newVersion);
+    }
+
     function setParams(
         uint32 baseCommitteeSize_,
         uint32 committeeSizeGrowthBps_,
@@ -213,19 +206,15 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         uint256 responseWindow_,
         uint256 jailDuration_,
         uint256 maxVoteBatchSize_,
-        uint256 minOperatorStake_,
-        uint256 heartbeatBond_,
-        uint16 heartbeatBondBurnBps_
+        uint256 minOperatorStake_
     ) external onlyOwner {
         if (quorumBps_ == 0) revert ZeroQuorumBps();
         if (verificationBps_ == 0) revert ZeroVerificationBps();
         if (responseWindow_ == 0) revert ZeroResponseWindow();
         if (jailDuration_ == 0) revert ZeroJailDuration();
-        if (heartbeatBond_ == 0) revert ZeroHeartbeatBond();
         _validateBps(quorumBps_);
         _validateBps(verificationBps_);
         _validateBps(committeeSizeGrowthBps_);
-        _validateBps(heartbeatBondBurnBps_);
         _validateDuration(responseWindow_);
         _validateDuration(jailDuration_);
         _validateCommitteeCaps(baseCommitteeSize_, maxCommitteeSize_);
@@ -244,8 +233,6 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
 
         _maxVoteBatchSize = maxVoteBatchSize_;
         _minOperatorStake = minOperatorStake_;
-        _heartbeatBond = heartbeatBond_;
-        _heartbeatBondBurnBps = heartbeatBondBurnBps_;
 
         emit ParamsUpdated(
             baseCommitteeSize_,
@@ -257,9 +244,7 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
             responseWindow_,
             jailDuration_,
             maxVoteBatchSize_,
-            minOperatorStake_,
-            heartbeatBond_,
-            heartbeatBondBurnBps_
+            minOperatorStake_
         );
     }
 

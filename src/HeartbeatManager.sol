@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
@@ -16,7 +17,7 @@ import "./Interfaces.sol";
 /// @title HeartbeatManager
 /// @notice Manages heartbeat verification rounds with stake-weighted committees and Merkle proofs.
 /// @dev Rounds start automatically on heartbeat submission (grindable selection surface accepted for this version).
-contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
+contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessControl {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
 
@@ -41,10 +42,9 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
     error InvalidOutcome();
     error UnsortedVoters();
     error InvalidVoterInList();
-    error InvalidVoterCount(uint256 got, uint256 expected);
     error InvalidVoterWeightSum(uint256 got, uint256 expected);
     error RawHTXHashMismatch();
-    error ZeroHeartbeatBond();
+    error UnauthorizedHeartbeatSubmitter(address caller);
 
     // Committee
     error InvalidCommitteeMember(address member);
@@ -58,10 +58,11 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
     uint256 private constant BPS_DENOMINATOR = 10_000;
     uint256 private constant MAX_VOTE_BATCH_HARD_LIMIT = 500;
     uint256 private constant DEFAULT_SLASHING_GAS_LIMIT = 200_000;
-    address private constant BURN_ADDRESS = address(0xdead);
 
     bytes32 private constant VOTE_TYPEHASH =
         keccak256("Vote(bytes32 heartbeatKey,uint8 round,uint8 verdict,uint64 snapshotId,bytes32 committeeRoot)");
+    bytes32 public constant HEARTBEAT_SUBMITTER_ROLE = keccak256("HEARTBEAT_SUBMITTER_ROLE");
+    bytes32 public constant HEARTBEAT_SUBMITTER_ADMIN_ROLE = keccak256("HEARTBEAT_SUBMITTER_ADMIN_ROLE");
 
     enum HeartbeatStatus { None, Pending, Verified, Invalid, Expired }
 
@@ -73,9 +74,6 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
         uint64 createdAt;
         bytes32 rawHTXHash;
         address submitter;
-        address bondToken;
-        uint16 bondBurnBps;
-        uint256 bondAmount;
     }
 
     struct RoundInfo {
@@ -84,8 +82,6 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
         uint256 errorStake;
         uint256 totalRespondedStake;
         uint256 committeeTotalStake;
-
-        uint32 validVotesCount;
 
         uint32 committeeSize;
         uint64 snapshotId;
@@ -139,9 +135,6 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
     event RewardDistributionAbandoned(bytes32 indexed heartbeatKey, uint8 indexed round);
     event RewardsDistributed(bytes32 indexed heartbeatKey, uint8 indexed round, uint256 voterCount, uint256 totalWeight);
     event SlashingGasLimitUpdated(uint256 oldLimit, uint256 newLimit);
-    event HeartbeatBonded(bytes32 indexed heartbeatKey, address indexed submitter, uint256 amount);
-    event HeartbeatBondRefunded(bytes32 indexed heartbeatKey, address indexed submitter, uint256 amount);
-    event HeartbeatBondBurned(bytes32 indexed heartbeatKey, uint256 amount);
 
     constructor(IProtocolConfig _config, address _owner)
         Ownable(_owner)
@@ -151,6 +144,10 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
         if (!_isProtocolConfig(address(_config))) revert InvalidProtocolConfig(address(_config));
         config = _config;
         slashingGasLimit = DEFAULT_SLASHING_GAS_LIMIT;
+        _grantRole(DEFAULT_ADMIN_ROLE, _owner);
+        _grantRole(HEARTBEAT_SUBMITTER_ADMIN_ROLE, _owner);
+        _setRoleAdmin(HEARTBEAT_SUBMITTER_ROLE, HEARTBEAT_SUBMITTER_ADMIN_ROLE);
+        _grantRole(HEARTBEAT_SUBMITTER_ROLE, _owner);
         emit ConfigUpdated(address(_config));
     }
 
@@ -182,9 +179,8 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
     function _computeCommitteeSize(uint8 escalationLevel) internal view returns (uint32) {
         uint256 size = uint256(config.baseCommitteeSize());
         uint256 growth = uint256(config.committeeSizeGrowthBps());
-        for (uint8 i = 0; i < escalationLevel; ) {
+        for (uint8 i = 0; i < escalationLevel; ++i) {
             size = (size * (BPS_DENOMINATOR + growth)) / BPS_DENOMINATOR;
-            ++i;
         }
         uint256 cap = uint256(config.maxCommitteeSize());
         if (size > cap) size = cap;
@@ -212,22 +208,16 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
         nonReentrant
         returns (bytes32 heartbeatKey)
     {
+        if (!hasRole(HEARTBEAT_SUBMITTER_ROLE, msg.sender)) {
+            revert UnauthorizedHeartbeatSubmitter(msg.sender);
+        }
         heartbeatKey = _deriveHeartbeatKey(rawHTX, uint64(block.number));
         if (snapshotId == 0) revert SnapshotBlockUnavailable(snapshotId);
 
         Heartbeat storage w = heartbeats[heartbeatKey];
         bytes32 rawHash = keccak256(rawHTX);
         if (w.status == HeartbeatStatus.None) {
-            uint256 bond = config.heartbeatBond();
-            if (bond == 0) revert ZeroHeartbeatBond();
-            address bondToken = IStakingOperators(config.stakingOps()).stakingToken();
-            IERC20(bondToken).safeTransferFrom(msg.sender, address(this), bond);
-
             w.submitter = msg.sender;
-            w.bondToken = bondToken;
-            w.bondBurnBps = config.heartbeatBondBurnBps();
-            w.bondAmount = bond;
-            emit HeartbeatBonded(heartbeatKey, msg.sender, bond);
 
             w.status = HeartbeatStatus.Pending;
             w.createdAt = uint64(block.timestamp);
@@ -278,7 +268,7 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
         bytes32[] memory leaves = new bytes32[](len);
         uint256 totalStake;
 
-        for (uint256 i = 0; i < len; ) {
+        for (uint256 i = 0; i < len; ++i) {
             address op = members[i];
             if (op == address(0) || op <= last) revert InvalidCommitteeMember(op);
             last = op;
@@ -288,7 +278,6 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
             totalStake += stake;
 
             leaves[i] = keccak256(abi.encodePacked(bytes1(0xA1), address(this), heartbeatKey, round, op));
-            ++i;
         }
 
         r.committeeRoot = _computeMerkleRoot(leaves);
@@ -320,11 +309,10 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
         uint256 maxBatch = config.maxVoteBatchSize();
         if ((maxBatch != 0 && len > maxBatch) || len > MAX_VOTE_BATCH_HARD_LIMIT) revert InvalidBatchSize();
 
-        for (uint256 i = 0; i < len; ) {
+        for (uint256 i = 0; i < len; ++i) {
             SignedBatchedVote calldata v = votes[i];
             _verifyVoteSig(v);
             _submitVerdict(v.operator, v.heartbeatKey, v.verdict, v.memberProof, v.round);
-            ++i;
         }
     }
 
@@ -385,7 +373,6 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
 
         if (verdict == 1) {
             r.validStake += weight;
-            r.validVotesCount += 1;
         } else if (verdict == 2) {
             r.invalidStake += weight;
         } else {
@@ -433,7 +420,6 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
             HeartbeatStatus old = w.status;
             w.status = HeartbeatStatus.Expired;
             emit HeartbeatStatusChanged(heartbeatKey, old, w.status, round);
-            _settleExpiredBond(heartbeatKey, w);
         }
     }
 
@@ -453,12 +439,10 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
             HeartbeatStatus old = w.status;
             w.status = HeartbeatStatus.Verified;
             emit HeartbeatStatusChanged(heartbeatKey, old, w.status, round);
-            _refundBond(heartbeatKey, w);
         } else if (outcome == ISlashingPolicy.Outcome.InvalidThreshold) {
             HeartbeatStatus old2 = w.status;
             w.status = HeartbeatStatus.Invalid;
             emit HeartbeatStatusChanged(heartbeatKey, old2, w.status, round);
-            _burnBond(heartbeatKey, w, w.bondAmount);
         }
 
         emit RoundFinalized(heartbeatKey, round, outcome);
@@ -485,37 +469,6 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
             let len := mload(payload)
             ok := call(gasLimit, target, 0, ptr, len, 0, 0)
         }
-    }
-
-    function _settleExpiredBond(bytes32 heartbeatKey, Heartbeat storage w) internal {
-        uint256 remaining = w.bondAmount;
-        if (remaining == 0) return;
-        uint256 burnAmount = Math.mulDiv(remaining, w.bondBurnBps, BPS_DENOMINATOR);
-        if (burnAmount > 0) _burnBond(heartbeatKey, w, burnAmount);
-        _refundBond(heartbeatKey, w);
-    }
-
-    function _refundBond(bytes32 heartbeatKey, Heartbeat storage w) internal {
-        uint256 amount = w.bondAmount;
-        if (amount == 0) return;
-        w.bondAmount = 0;
-        IERC20(w.bondToken).safeTransfer(w.submitter, amount);
-        emit HeartbeatBondRefunded(heartbeatKey, w.submitter, amount);
-    }
-
-    function _burnBond(bytes32 heartbeatKey, Heartbeat storage w, uint256 amount) internal {
-        if (amount == 0) return;
-        if (amount > w.bondAmount) amount = w.bondAmount;
-        w.bondAmount -= amount;
-        if (!_tryBurn(w.bondToken, amount)) {
-            IERC20(w.bondToken).safeTransfer(BURN_ADDRESS, amount);
-        }
-        emit HeartbeatBondBurned(heartbeatKey, amount);
-    }
-
-    function _tryBurn(address token, uint256 amount) internal returns (bool) {
-        (bool ok, ) = token.call(abi.encodeWithSignature("burn(uint256)", amount));
-        return ok;
     }
 
     function retrySlashing(bytes32 heartbeatKey, uint8 round) external whenNotPaused nonReentrant {
@@ -545,15 +498,12 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
         uint256 expectedStake = outcome == ISlashingPolicy.Outcome.ValidThreshold ? r.validStake : r.invalidStake;
 
         uint256 n = sortedVoters.length;
-        if (outcome == ISlashingPolicy.Outcome.ValidThreshold && n != uint256(r.validVotesCount)) {
-            revert InvalidVoterCount(n, r.validVotesCount);
-        }
 
         address last = address(0);
         uint256 sumWeights;
         uint256[] memory weights = new uint256[](n);
 
-        for (uint256 i = 0; i < n; ) {
+        for (uint256 i = 0; i < n; ++i) {
             address op = sortedVoters[i];
             if (op <= last) revert UnsortedVoters();
             last = op;
@@ -565,15 +515,51 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
             uint256 wgt = _weight(packed);
             weights[i] = wgt;
             sumWeights += wgt;
-
-            ++i;
         }
 
         if (sumWeights != expectedStake) revert InvalidVoterWeightSum(sumWeights, expectedStake);
 
-        IRewardPolicy(r.reward).accrueWeights(heartbeatKey, round, sortedVoters, weights);
+        IStakingOperators stakingOps = IStakingOperators(r.stakingOps);
+        address[] memory recipients = new address[](n);
+        uint256[] memory recipientWeights = new uint256[](n);
+        uint256 recipientCount;
+
+        for (uint256 i = 0; i < n; ++i) {
+            address op = sortedVoters[i];
+            address staker = stakingOps.operatorStaker(op);
+            if (staker == address(0)) {
+                staker = op;
+            }
+
+            uint256 wgt = weights[i];
+            uint256 insertAt = 0;
+            while (insertAt < recipientCount && recipients[insertAt] < staker) {
+                unchecked { ++insertAt; }
+            }
+
+            if (insertAt < recipientCount && recipients[insertAt] == staker) {
+                recipientWeights[insertAt] += wgt;
+            } else {
+                for (uint256 j = recipientCount; j > insertAt; --j) {
+                    recipients[j] = recipients[j - 1];
+                    recipientWeights[j] = recipientWeights[j - 1];
+                }
+                recipients[insertAt] = staker;
+                recipientWeights[insertAt] = wgt;
+                unchecked { ++recipientCount; }
+            }
+        }
+
+        address[] memory finalRecipients = new address[](recipientCount);
+        uint256[] memory finalWeights = new uint256[](recipientCount);
+        for (uint256 i = 0; i < recipientCount; ++i) {
+            finalRecipients[i] = recipients[i];
+            finalWeights[i] = recipientWeights[i];
+        }
+
+        IRewardPolicy(r.reward).accrueWeights(heartbeatKey, round, finalRecipients, finalWeights);
         rewardsDone[heartbeatKey][round] = true;
-        emit RewardsDistributed(heartbeatKey, round, n, sumWeights);
+        emit RewardsDistributed(heartbeatKey, round, recipientCount, sumWeights);
     }
 
     function abandonRewardDistribution(bytes32 heartbeatKey, uint8 round) external onlyOwner {
@@ -593,12 +579,11 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712 {
 
         while (len > 1) {
             uint256 nextLen = (len + 1) / 2;
-            for (uint256 i = 0; i < nextLen; ) {
+            for (uint256 i = 0; i < nextLen; ++i) {
                 uint256 idx = i * 2;
                 bytes32 left = leaves[idx];
                 bytes32 right = idx + 1 < len ? leaves[idx + 1] : left;
                 leaves[i] = _hashPair(left, right);
-                ++i;
             }
             len = nextLen;
         }

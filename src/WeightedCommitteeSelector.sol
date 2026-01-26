@@ -98,9 +98,8 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
         } else {
             pool = active;
             stakes = new uint256[](n);
-            for (uint256 i = 0; i < n; ) {
+            for (uint256 i = 0; i < n; ++i) {
                 stakes[i] = stakingOps.stakeAt(pool[i], snapshotId);
-                ++i;
             }
         }
 
@@ -110,22 +109,19 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
         if (k > n) k = uint32(n);
 
         uint256 totalVP;
-        for (uint256 i = 0; i < n; ) {
+        for (uint256 i = 0; i < n; ++i) {
             totalVP += stakes[i];
-            ++i;
         }
         if (totalVP == 0) revert ZeroTotalVotingPower();
 
         // Fenwick tree build (O(n))
         uint256[] memory bit = new uint256[](n + 1);
-        for (uint256 i = 1; i <= n; ) {
+        for (uint256 i = 1; i <= n; ++i) {
             bit[i] = stakes[i - 1];
-            ++i;
         }
-        for (uint256 i = 1; i <= n; ) {
+        for (uint256 i = 1; i <= n; ++i) {
             uint256 j = i + _lsb(i);
             if (j <= n) bit[j] += bit[i];
-            ++i;
         }
 
         members = new address[](k);
@@ -134,7 +130,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
         uint256 selectedVP;
         uint32 picked;
 
-        for (; picked < k; ) {
+        for (; picked < k; ++picked) {
             if (remainingVP == 0) break;
 
             bytes32 seed = keccak256(abi.encodePacked(
@@ -156,14 +152,12 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
             _bitSub(bit, idx1, w);
             remainingVP -= w;
 
-            ++picked;
         }
 
         if (picked < k) {
             address[] memory trimmed = new address[](picked);
-            for (uint32 i = 0; i < picked; ) {
+            for (uint32 i = 0; i < picked; ++i) {
                 trimmed[i] = members[i];
-                ++i;
             }
             members = trimmed;
         }
@@ -191,7 +185,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
         address[] memory heapAddr = new address[](k);
         uint256 heapSize;
 
-        for (uint256 i = 0; i < n; ) {
+        for (uint256 i = 0; i < n; ++i) {
             address op = active[i];
             uint256 s = stakingOps.stakeAt(op, snapshotId);
 
@@ -207,15 +201,13 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
                     _heapSiftDown(heapStake, heapAddr, heapSize, 0);
                 }
             }
-            ++i;
         }
 
         top = new address[](heapSize);
         topStakes = new uint256[](heapSize);
-        for (uint256 i = 0; i < heapSize; ) {
+        for (uint256 i = 0; i < heapSize; ++i) {
             top[i] = heapAddr[i];
             topStakes[i] = heapStake[i];
-            ++i;
         }
     }
 
