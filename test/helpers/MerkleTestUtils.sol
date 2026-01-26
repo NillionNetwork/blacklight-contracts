@@ -17,12 +17,11 @@ library MerkleTestUtils {
         if (len == 0) return bytes32(0);
         while (len > 1) {
             uint256 nextLen = (len + 1) / 2;
-            for (uint256 i = 0; i < nextLen; ) {
+            for (uint256 i = 0; i < nextLen; ++i) {
                 uint256 idx = i * 2;
                 bytes32 left = leaves[idx];
                 bytes32 right = idx + 1 < len ? leaves[idx + 1] : left;
                 leaves[i] = hashPair(left, right);
-                ++i;
             }
             len = nextLen;
         }
@@ -36,9 +35,8 @@ library MerkleTestUtils {
     {
         uint256 n = members.length;
         leaves = new bytes32[](n);
-        for (uint256 i = 0; i < n; ) {
+        for (uint256 i = 0; i < n; ++i) {
             leaves[i] = leaf(heartbeatManager, heartbeatKey, round, members[i]);
-            ++i;
         }
     }
 
@@ -66,12 +64,11 @@ library MerkleTestUtils {
 
             uint256 nextLen = (level.length + 1) / 2;
             bytes32[] memory next = new bytes32[](nextLen);
-            for (uint256 i = 0; i < nextLen; ) {
+            for (uint256 i = 0; i < nextLen; ++i) {
                 uint256 li = i * 2;
                 bytes32 left = level[li];
                 bytes32 right = li + 1 < level.length ? level[li + 1] : left;
                 next[i] = hashPair(left, right);
-                ++i;
             }
             level = next;
             idx = idx / 2;
@@ -81,9 +78,8 @@ library MerkleTestUtils {
     }
 
     function indexOf(address[] memory arr, address target) internal pure returns (bool found, uint256 index) {
-        for (uint256 i = 0; i < arr.length; ) {
+        for (uint256 i = 0; i < arr.length; ++i) {
             if (arr[i] == target) return (true, i);
-            ++i;
         }
         return (false, 0);
     }

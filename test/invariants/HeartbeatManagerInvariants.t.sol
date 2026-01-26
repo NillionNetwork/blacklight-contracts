@@ -53,7 +53,7 @@ contract HeartbeatHandler is Test {
         address voter = members[idx];
 
         // read round info
-        (, , , , , , , , , , uint64 deadline, bool finalized, , , , , , , , ) = manager.rounds(heartbeatKey, round);
+        (, , , , , , , , , uint64 deadline, bool finalized, , , , , , , , ) = manager.rounds(heartbeatKey, round);
         if (finalized) return;
         if (block.timestamp > deadline) return;
         if (verdict == 0 || verdict > 3) verdict = 1;
@@ -67,7 +67,7 @@ contract HeartbeatHandler is Test {
     }
 
     function escalateIfNeeded() external {
-        (, , , , , , , , , , uint64 deadline, bool finalized, , , , , , , , ) = manager.rounds(heartbeatKey, round);
+        (, , , , , , , , , uint64 deadline, bool finalized, , , , , , , , ) = manager.rounds(heartbeatKey, round);
         if (finalized) return;
         if (block.timestamp <= deadline) return;
 
@@ -125,9 +125,7 @@ contract HeartbeatManagerInvariants is StdInvariant, Test {
             1 days,
             7 days,
             100,
-            1e18,
-            1e18,
-            1000
+            1e18
         );
 
         manager = new HeartbeatManager(config, address(this));
@@ -142,6 +140,8 @@ contract HeartbeatManagerInvariants is StdInvariant, Test {
         stakingOps.grantRole(stakingOps.SLASHER_ROLE(), address(jailingPolicy));
         vm.stopPrank();
 
+        bytes32 submitterRole = manager.HEARTBEAT_SUBMITTER_ROLE();
+
         // create 30 operators with equal stake and register
         uint256 n = 30;
         for (uint256 i = 0; i < n; i++) {
@@ -155,6 +155,8 @@ contract HeartbeatManagerInvariants is StdInvariant, Test {
             stakingOps.stakeTo(op, 2e18);
             stakingOps.registerOperator("ipfs://x");
             vm.stopPrank();
+
+            manager.grantRole(submitterRole, op);
         }
 
         // advance blocks so snapshot works
@@ -218,7 +220,7 @@ contract HeartbeatManagerInvariants is StdInvariant, Test {
         uint8 r = handler.round();
 
         (uint256 validStake, uint256 invalidStake, uint256 errorStake, uint256 totalResponded, uint256 committeeTotal,
-            uint32 validVotesCount, uint32 committeeSize, uint64 snapshotId, , , , , , , , , , , , ) = manager.rounds(hbKey, r);
+            uint32 committeeSize, uint64 snapshotId, , , , , , , , , , , , ) = manager.rounds(hbKey, r);
 
         assertEq(validStake + invalidStake + errorStake, totalResponded, "stake buckets don't sum to responded");
         assertLe(totalResponded, committeeTotal, "responded exceeds committee total");
@@ -230,14 +232,6 @@ contract HeartbeatManagerInvariants is StdInvariant, Test {
         assertEq(committeeSize, 20);
         assertEq(snapshotId, handler.snapshotId());
 
-        // validVotesCount equals count of verdict==1 responders in committee
-        address[] memory members = handler.getMembers();
-        uint32 count;
-        for (uint256 i = 0; i < members.length; i++) {
-            uint256 packed = manager.getVotePacked(hbKey, r, members[i]);
-            if ((packed & (1 << 2)) != 0 && uint8(packed & 0x3) == 1) count++;
-        }
-        assertEq(count, validVotesCount, "validVotesCount mismatch");
     }
 
     function invariant_voteWeightsMatchSnapshotStake() public {
@@ -267,7 +261,7 @@ contract HeartbeatManagerInvariants is StdInvariant, Test {
         uint8 r = handler.round();
         uint64 snap = handler.snapshotId();
 
-        ( , , , , uint256 committeeTotal, , , , , , , , , , , , , , , ) = manager.rounds(hbKey, r);
+        ( , , , , uint256 committeeTotal, , , , , , , , , , , , , , ) = manager.rounds(hbKey, r);
 
         address[] memory members = handler.getMembers();
         uint256 sum;

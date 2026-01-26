@@ -55,6 +55,278 @@ contract BlacklightSystemTest is BlacklightFixture {
         }
     }
 
+    function test_endToEnd_rewards_claim_by_staker() public {
+        uint256 nOps = 6;
+        uint256[] memory stakes = new uint256[](nOps);
+        for (uint256 i = 0; i < nOps; i++) stakes[i] = 2e18;
+
+        _deploySystem(
+            nOps,
+            stakes,
+            6,
+            6,
+            5000,
+            5000,
+            1 days,
+            7 days,
+            0
+        );
+
+        address sharedStaker = address(0xBEEF);
+        uint256 stakeAmount = stakingOps.stakeOf(ops[0]);
+
+        for (uint256 i = 0; i < ops.length; i++) {
+            vm.prank(ops[i]);
+            stakingOps.requestUnstake(ops[i], stakeAmount);
+        }
+
+        vm.warp(block.timestamp + 1 days + 1);
+
+        for (uint256 i = 0; i < ops.length; i++) {
+            vm.prank(ops[i]);
+            stakingOps.withdrawUnstaked(ops[i]);
+            vm.prank(ops[i]);
+            stakingOps.approveStaker(sharedStaker);
+        }
+
+        stakeToken.mint(sharedStaker, stakeAmount * nOps);
+        vm.startPrank(sharedStaker);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        for (uint256 i = 0; i < ops.length; i++) {
+            stakingOps.stakeTo(ops[i], stakeAmount);
+        }
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
+
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        assertEq(members.length, nOps);
+
+        for (uint256 i = 0; i < members.length; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
+
+        _finalizeDefault(hbKey, round);
+
+        rewardToken.mint(governance, 600);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        rewardPolicy.fund(600);
+        vm.warp(block.timestamp + 2 days);
+        rewardPolicy.sync();
+
+        manager.distributeRewards(hbKey, round, members);
+
+        assertEq(rewardPolicy.rewards(sharedStaker), 600);
+        for (uint256 i = 0; i < ops.length; i++) {
+            assertEq(rewardPolicy.rewards(ops[i]), 0);
+        }
+
+        vm.prank(sharedStaker);
+        rewardPolicy.claim();
+        assertEq(rewardToken.balanceOf(sharedStaker), 600);
+    }
+
+    function test_endToEnd_rewards_large_shared_staker() public {
+        uint256 nOps = 20;
+        uint256[] memory stakes = new uint256[](nOps);
+        for (uint256 i = 0; i < nOps; i++) stakes[i] = 2e18;
+
+        _deploySystem(
+            nOps,
+            stakes,
+            20,
+            20,
+            5000,
+            5000,
+            1 days,
+            7 days,
+            0
+        );
+
+        address sharedStaker = address(0xBEEF);
+        uint256 stakeAmount = stakingOps.stakeOf(ops[0]);
+
+        for (uint256 i = 0; i < ops.length; i++) {
+            vm.prank(ops[i]);
+            stakingOps.requestUnstake(ops[i], stakeAmount);
+        }
+
+        vm.warp(block.timestamp + 1 days + 1);
+
+        for (uint256 i = 0; i < ops.length; i++) {
+            vm.prank(ops[i]);
+            stakingOps.withdrawUnstaked(ops[i]);
+            vm.prank(ops[i]);
+            stakingOps.approveStaker(sharedStaker);
+        }
+
+        stakeToken.mint(sharedStaker, stakeAmount * nOps);
+        vm.startPrank(sharedStaker);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        for (uint256 i = 0; i < ops.length; i++) {
+            stakingOps.stakeTo(ops[i], stakeAmount);
+        }
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
+
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        assertEq(members.length, nOps);
+
+        for (uint256 i = 0; i < members.length; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
+
+        _finalizeDefault(hbKey, round);
+
+        rewardToken.mint(governance, 2000);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        rewardPolicy.fund(2000);
+        vm.warp(block.timestamp + 2 days);
+        rewardPolicy.sync();
+
+        manager.distributeRewards(hbKey, round, members);
+
+        assertEq(rewardPolicy.rewards(sharedStaker), 2000);
+        vm.prank(sharedStaker);
+        rewardPolicy.claim();
+        assertEq(rewardToken.balanceOf(sharedStaker), 2000);
+    }
+
+    function test_endToEnd_rewards_mixed_staker_and_operator_claims() public {
+        uint256 nOps = 4;
+        uint256[] memory stakes = new uint256[](nOps);
+        for (uint256 i = 0; i < nOps; i++) stakes[i] = 2e18;
+
+        _deploySystem(
+            nOps,
+            stakes,
+            4,
+            4,
+            5000,
+            5000,
+            1 days,
+            7 days,
+            0
+        );
+
+        address sharedStaker = address(0xBEEF);
+        uint256 stakeAmount = stakingOps.stakeOf(ops[0]);
+
+        for (uint256 i = 0; i < 2; i++) {
+            vm.prank(ops[i]);
+            stakingOps.requestUnstake(ops[i], stakeAmount);
+        }
+
+        vm.warp(block.timestamp + 1 days + 1);
+
+        for (uint256 i = 0; i < 2; i++) {
+            vm.prank(ops[i]);
+            stakingOps.withdrawUnstaked(ops[i]);
+            vm.prank(ops[i]);
+            stakingOps.approveStaker(sharedStaker);
+        }
+
+        stakeToken.mint(sharedStaker, stakeAmount * 2);
+        vm.startPrank(sharedStaker);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(ops[0], stakeAmount);
+        stakingOps.stakeTo(ops[1], stakeAmount);
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
+
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        assertEq(members.length, nOps);
+
+        for (uint256 i = 0; i < members.length; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
+
+        _finalizeDefault(hbKey, round);
+
+        rewardToken.mint(governance, 400);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        rewardPolicy.fund(400);
+        vm.warp(block.timestamp + 2 days);
+        rewardPolicy.sync();
+
+        manager.distributeRewards(hbKey, round, members);
+
+        assertEq(rewardPolicy.rewards(sharedStaker), 200);
+        assertEq(rewardPolicy.rewards(ops[2]), 100);
+        assertEq(rewardPolicy.rewards(ops[3]), 100);
+        assertEq(rewardPolicy.rewards(ops[0]), 0);
+        assertEq(rewardPolicy.rewards(ops[1]), 0);
+
+        vm.prank(sharedStaker);
+        rewardPolicy.claim();
+        vm.prank(ops[2]);
+        rewardPolicy.claim();
+        vm.prank(ops[3]);
+        rewardPolicy.claim();
+
+        assertEq(rewardToken.balanceOf(sharedStaker), 200);
+        assertEq(rewardToken.balanceOf(ops[2]), 100);
+        assertEq(rewardToken.balanceOf(ops[3]), 100);
+    }
+
+    function test_endToEnd_rewards_use_latest_staker_on_distribution() public {
+        uint256 nOps = 2;
+        uint256[] memory stakes = new uint256[](nOps);
+        for (uint256 i = 0; i < nOps; i++) stakes[i] = 2e18;
+
+        _deploySystem(
+            nOps,
+            stakes,
+            2,
+            2,
+            5000,
+            5000,
+            1 days,
+            7 days,
+            0
+        );
+
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        for (uint256 i = 0; i < members.length; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
+        _finalizeDefault(hbKey, round);
+
+        address newStaker = address(0xBEEF);
+        uint256 stakeAmount = stakingOps.stakeOf(ops[0]);
+
+        vm.prank(ops[0]);
+        stakingOps.requestUnstake(ops[0], stakeAmount);
+        vm.warp(block.timestamp + 1 days + 1);
+        vm.prank(ops[0]);
+        stakingOps.withdrawUnstaked(ops[0]);
+
+        vm.prank(ops[0]);
+        stakingOps.approveStaker(newStaker);
+        stakeToken.mint(newStaker, stakeAmount);
+        vm.startPrank(newStaker);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(ops[0], stakeAmount);
+        vm.stopPrank();
+
+        rewardToken.mint(governance, 200);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        rewardPolicy.fund(200);
+        vm.warp(block.timestamp + 2 days);
+        rewardPolicy.sync();
+
+        manager.distributeRewards(hbKey, round, members);
+
+        assertEq(rewardPolicy.rewards(newStaker), 100);
+        assertEq(rewardPolicy.rewards(ops[1]), 100);
+        assertEq(rewardPolicy.rewards(ops[0]), 0);
+    }
+
     function test_largeCommittee_200_members_finalizes_and_jailing_enforcement() public {
         uint256 nOps = 250;
         uint256[] memory stakes = new uint256[](nOps);

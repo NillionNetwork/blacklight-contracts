@@ -174,9 +174,7 @@ contract StakingInvariants is StdInvariant, Test {
             10,
             10,
             100,
-            1e18,
-            1e18,
-            0
+            1e18
         );
 
         vm.prank(admin);

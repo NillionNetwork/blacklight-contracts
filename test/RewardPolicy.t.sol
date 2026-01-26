@@ -2,10 +2,13 @@
 pragma solidity ^0.8.22;
 
 import "forge-std/Test.sol";
+import "forge-std/StdStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "../src/mocks/MockERC20.sol";
 import "../src/RewardPolicy.sol";
 
 contract RewardPolicyTest is Test {
+    using stdStorage for StdStorage;
     MockERC20 token;
     RewardPolicy policy;
 
@@ -105,6 +108,29 @@ contract RewardPolicyTest is Test {
         assertEq(policy.rewards(address(0x1)) + policy.rewards(address(0x2)), 100);
     }
 
+    function test_accrueWeights_uses_partial_unlock() public {
+        token.mint(owner, 100);
+        token.approve(address(policy), type(uint256).max);
+        policy.fund(100);
+
+        vm.warp(block.timestamp + 12 hours);
+        policy.sync();
+
+        uint256 before = policy.spendableBudget();
+        assertGt(before, 0);
+        assertLt(before, 100);
+
+        address[] memory rec = new address[](1);
+        rec[0] = address(0x1);
+        uint256[] memory w = new uint256[](1);
+        w[0] = 1;
+
+        policy.accrueWeights(bytes32("hbKey"), 1, rec, w);
+
+        uint256 afterB = policy.spendableBudget();
+        assertLt(afterB, before);
+    }
+
     function test_dustDistribution_allocatesOneWei() public {
         // Make spendableBudget exactly 1
         token.mint(owner, 1);
@@ -143,5 +169,39 @@ contract RewardPolicyTest is Test {
         policy.claim();
         assertEq(token.balanceOf(address(0xBEEF)), 10);
         assertEq(policy.rewards(address(0xBEEF)), 0);
+    }
+
+    function test_setEpochDuration_onlyOwner_and_updatesValue() public {
+        address nonOwner = address(0xBEEF);
+        vm.prank(nonOwner);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
+        policy.setEpochDuration(2 days);
+
+        vm.expectRevert(RewardPolicy.ZeroEpochDuration.selector);
+        policy.setEpochDuration(0);
+
+        policy.setEpochDuration(2 days);
+        assertEq(policy.epochDuration(), 2 days);
+    }
+
+    function test_setMaxPayoutPerFinalize_onlyOwner() public {
+        address nonOwner = address(0xBEEF);
+        vm.prank(nonOwner);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
+        policy.setMaxPayoutPerFinalize(123);
+
+        policy.setMaxPayoutPerFinalize(123);
+        assertEq(policy.maxPayoutPerFinalize(), 123);
+    }
+
+    function test_sync_underflow_updatesAccountedBalance_withoutFreeze() public {
+        uint256 slot = stdstore.target(address(policy)).sig("accountedBalance()").find();
+        vm.store(address(policy), bytes32(slot), bytes32(uint256(1)));
+        assertEq(policy.accountedBalance(), 1);
+
+        policy.sync();
+
+        assertEq(policy.accountedBalance(), 0);
+        assertFalse(policy.accountingFrozen());
     }
 }

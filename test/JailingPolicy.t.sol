@@ -71,6 +71,44 @@ contract JailingPolicyTest is BlacklightFixture {
         }
     }
 
+    function test_inconclusiveVote_notJailedOnValidOutcome() public {
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+
+        for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 1);
+        _vote(hbKey, round, members, members[5], 3);
+
+        _finalizeDefault(hbKey, round);
+        assertEq(uint8(manager.roundOutcome(hbKey, round)), uint8(ISlashingPolicy.Outcome.ValidThreshold));
+
+        jailingPolicy.enforceJailFromMembers(hbKey, round, members);
+
+        assertFalse(stakingOps.isJailed(members[5]));
+        assertFalse(jailingPolicy.enforced(hbKey, round, members[5]));
+
+        bytes32[] memory proof = _proofForMember(hbKey, round, members, members[5]);
+        vm.expectRevert(JailingPolicy.NotJailable.selector);
+        jailingPolicy.enforceJail(hbKey, round, members[5], proof);
+    }
+
+    function test_inconclusiveVote_notJailedOnInvalidOutcome() public {
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+
+        for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 2);
+        _vote(hbKey, round, members, members[5], 3);
+
+        _finalizeDefault(hbKey, round);
+        assertEq(uint8(manager.roundOutcome(hbKey, round)), uint8(ISlashingPolicy.Outcome.InvalidThreshold));
+
+        jailingPolicy.enforceJailFromMembers(hbKey, round, members);
+
+        assertFalse(stakingOps.isJailed(members[5]));
+        assertFalse(jailingPolicy.enforced(hbKey, round, members[5]));
+
+        bytes32[] memory proof = _proofForMember(hbKey, round, members, members[5]);
+        vm.expectRevert(JailingPolicy.NotJailable.selector);
+        jailingPolicy.enforceJail(hbKey, round, members[5], proof);
+    }
+
     function test_enforceJailFromMembers_revertsOnRootMismatchOrUnsorted() public {
         (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
         for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 1);
@@ -100,7 +138,7 @@ contract JailingPolicyTest is BlacklightFixture {
         // only 1 vote => no quorum -> inconclusive after deadline
         _vote(hbKey, round, members, members[0], 1);
 
-        (, , , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(hbKey, round);
+        (, , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(hbKey, round);
         vm.warp(uint256(deadline) + 1);
         manager.escalateOrExpire(hbKey, _defaultRawHTX(1));
 

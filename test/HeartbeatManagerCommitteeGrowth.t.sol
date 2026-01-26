@@ -33,9 +33,7 @@ contract HeartbeatManagerCommitteeGrowthTest is BlacklightFixture {
             1 days,
             7 days,
             100,
-            config.minOperatorStake(),
-            config.heartbeatBond(),
-            config.heartbeatBondBurnBps()
+            config.minOperatorStake()
         );
     }
 
@@ -43,26 +41,26 @@ contract HeartbeatManagerCommitteeGrowthTest is BlacklightFixture {
         (bytes32 hbKey, uint8 round1, , , ) = _submitPointerAndGetRound();
         assertEq(round1, 1);
 
-        (, , , , , , uint32 size1, , , , uint64 deadline1, , , , , , , , , ) = manager.rounds(hbKey, 1);
+        (, , , , , uint32 size1, , , , uint64 deadline1, , , , , , , , , ) = manager.rounds(hbKey, 1);
         assertEq(size1, 4);
 
         vm.warp(uint256(deadline1) + 1);
         manager.escalateOrExpire(hbKey, _defaultRawHTX(1));
 
-        (, , , , , , uint32 size2, , , , uint64 deadline2, , , , , , , , , ) = manager.rounds(hbKey, 2);
+        (, , , , , uint32 size2, , , , uint64 deadline2, , , , , , , , , ) = manager.rounds(hbKey, 2);
         assertEq(size2, 6); // 4 * 1.5
 
         vm.warp(uint256(deadline2) + 1);
         manager.escalateOrExpire(hbKey, _defaultRawHTX(1));
 
-        (, , , , , , uint32 size3, , , , uint64 deadline3, , , , , , , , , ) = manager.rounds(hbKey, 3);
+        (, , , , , uint32 size3, , , , uint64 deadline3, , , , , , , , , ) = manager.rounds(hbKey, 3);
         assertEq(size3, 9); // 6 * 1.5
 
         // After max escalations (2), third inconclusive should expire
         vm.warp(uint256(deadline3) + 1);
         manager.escalateOrExpire(hbKey, _defaultRawHTX(1));
 
-        (HeartbeatManager.HeartbeatStatus status, , , , , , , , , ) = manager.heartbeats(hbKey);
+        (HeartbeatManager.HeartbeatStatus status, , , , , , ) = manager.heartbeats(hbKey);
         assertEq(uint8(status), uint8(HeartbeatManager.HeartbeatStatus.Expired));
     }
 }
