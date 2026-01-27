@@ -32,8 +32,6 @@ abstract contract BlacklightFixture is Test {
 
     uint256[] internal opPks;
     address[] internal ops;
-    uint256 internal heartbeatBond = 1e18;
-    uint16 internal heartbeatBondBurnBps = 1000;
 
     function _deploySystem(
         uint256 operatorCount,
@@ -73,9 +71,7 @@ abstract contract BlacklightFixture is Test {
             responseWindow,
             jailDuration,
             100, // maxVoteBatchSize
-            1e18, // minOperatorStake
-            heartbeatBond,
-            heartbeatBondBurnBps
+            1e18 // minOperatorStake
         );
 
         manager = new HeartbeatManager(config, governance);
@@ -96,6 +92,7 @@ abstract contract BlacklightFixture is Test {
         // create operators
         opPks = new uint256[](operatorCount);
         ops = new address[](operatorCount);
+        bytes32 submitterRole = manager.HEARTBEAT_SUBMITTER_ROLE();
 
         for (uint256 i = 0; i < operatorCount; i++) {
             uint256 pk = uint256(keccak256(abi.encodePacked("op", i + 1)));
@@ -103,14 +100,15 @@ abstract contract BlacklightFixture is Test {
             opPks[i] = pk;
             ops[i] = op;
 
-            stakeToken.mint(op, stakes[i] + heartbeatBond);
+            stakeToken.mint(op, stakes[i]);
 
             vm.startPrank(op);
             stakeToken.approve(address(stakingOps), type(uint256).max);
-            stakeToken.approve(address(manager), type(uint256).max);
             stakingOps.stakeTo(op, stakes[i]);
             stakingOps.registerOperator(string(abi.encodePacked("ipfs://operator/", vm.toString(i))));
             vm.stopPrank();
+
+            manager.grantRole(submitterRole, op);
         }
 
         // Ensure we can take snapshots (StakingOperators.snapshot() requires block.number > 1).
@@ -216,9 +214,8 @@ abstract contract BlacklightFixture is Test {
     function _computeCommitteeSize(uint8 escalationLevel) internal view returns (uint32) {
         uint256 size = uint256(config.baseCommitteeSize());
         uint256 growth = uint256(config.committeeSizeGrowthBps());
-        for (uint8 i = 0; i < escalationLevel; ) {
+        for (uint8 i = 0; i < escalationLevel; ++i) {
             size = (size * (10_000 + growth)) / 10_000;
-            ++i;
         }
         uint256 cap = uint256(config.maxCommitteeSize());
         if (size > cap) size = cap;
@@ -257,7 +254,7 @@ abstract contract BlacklightFixture is Test {
     }
 
     function _finalizeRound(bytes32 heartbeatKey, uint8 round, uint64 rawId) internal {
-        (, , , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(heartbeatKey, round);
+        (, , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(heartbeatKey, round);
         vm.warp(uint256(deadline) + 1);
         manager.escalateOrExpire(heartbeatKey, _defaultRawHTX(rawId));
     }

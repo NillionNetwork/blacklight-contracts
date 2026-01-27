@@ -124,13 +124,9 @@ contract JailingPolicy is ISlashingPolicy {
     ) external {
         uint256 n = operators.length;
         if (n != proofs.length) revert ProofsLengthMismatch(n, proofs.length);
-        for (uint256 i = 0; i < n; ) {
-            if (enforced[heartbeatKey][round][operators[i]]) {
-                ++i;
-                continue;
-            }
+        for (uint256 i = 0; i < n; ++i) {
+            if (enforced[heartbeatKey][round][operators[i]]) continue;
             enforceJail(heartbeatKey, round, operators[i], proofs[i]);
-            ++i;
         }
     }
 
@@ -147,18 +143,17 @@ contract JailingPolicy is ISlashingPolicy {
         bytes32[] memory leaves = new bytes32[](n);
         address last = address(0);
 
-        for (uint256 i = 0; i < n; ) {
+        for (uint256 i = 0; i < n; ++i) {
             address op = sortedMembers[i];
             if (op == address(0) || op <= last) revert UnsortedMembers();
             last = op;
             leaves[i] = keccak256(abi.encodePacked(bytes1(0xA1), heartbeatManager, heartbeatKey, round, op));
-            ++i;
         }
 
         bytes32 root = _computeMerkleRoot(leaves);
         if (root != rr.committeeRoot) revert CommitteeRootMismatch();
 
-        for (uint256 i = 0; i < n; ) {
+        for (uint256 i = 0; i < n; ++i) {
             address op = sortedMembers[i];
             if (!enforced[heartbeatKey][round][op]) {
                 if (_isJailable(heartbeatKey, round, rr.outcome, op)) {
@@ -168,7 +163,6 @@ contract JailingPolicy is ISlashingPolicy {
                     emit JailEnforced(heartbeatKey, round, op, until);
                 }
             }
-            ++i;
         }
     }
 
@@ -179,6 +173,8 @@ contract JailingPolicy is ISlashingPolicy {
         if (!responded) return outcome != Outcome.Inconclusive;
 
         uint8 verdict = uint8(packed & VERDICT_MASK);
+
+        if (verdict == 3) return false; // Dictates whether voting inconclusive is ever a jailable offense
 
         if (outcome == Outcome.Inconclusive) return false;
 
@@ -203,12 +199,11 @@ contract JailingPolicy is ISlashingPolicy {
 
         while (len > 1) {
             uint256 nextLen = (len + 1) / 2;
-            for (uint256 i = 0; i < nextLen; ) {
+            for (uint256 i = 0; i < nextLen; ++i) {
                 uint256 idx = i * 2;
                 bytes32 left = leaves[idx];
                 bytes32 right = idx + 1 < len ? leaves[idx + 1] : left;
                 leaves[i] = _hashPair(left, right);
-                ++i;
             }
             len = nextLen;
         }

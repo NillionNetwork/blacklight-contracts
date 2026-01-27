@@ -36,7 +36,7 @@ contract HeartbeatFlowTest is BlacklightFixture {
         _vote(hbKey, round, members, members[0], 1);
 
         _finalizeDefault(hbKey, round);
-        (HeartbeatManager.HeartbeatStatus status, , , , , , , , , ) = manager.heartbeats(hbKey);
+        (HeartbeatManager.HeartbeatStatus status, , , , , , ) = manager.heartbeats(hbKey);
         assertEq(uint8(status), uint8(HeartbeatManager.HeartbeatStatus.Verified));
 
         // Unlock funded rewards before distribution.
@@ -92,7 +92,7 @@ contract HeartbeatInvalidRewardFlowTest is BlacklightFixture {
         _vote(hbKey, round, members, members[9], 1);
 
         _finalizeDefault(hbKey, round);
-        (HeartbeatManager.HeartbeatStatus status, , , , , , , , , ) = manager.heartbeats(hbKey);
+        (HeartbeatManager.HeartbeatStatus status, , , , , , ) = manager.heartbeats(hbKey);
         assertEq(uint8(status), uint8(HeartbeatManager.HeartbeatStatus.Invalid));
 
         vm.warp(block.timestamp + 1 days + 1);

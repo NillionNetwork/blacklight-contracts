@@ -36,9 +36,7 @@ contract StakingOperatorsTest is Test {
             10,
             10,
             100,
-            1e18,
-            1e18,
-            0
+            1e18
         );
 
         vm.prank(admin);
@@ -115,9 +113,7 @@ contract StakingOperatorsTest is Test {
             config.responseWindow(),
             config.jailDuration(),
             config.maxVoteBatchSize(),
-            2e18,
-            config.heartbeatBond(),
-            config.heartbeatBondBurnBps()
+            2e18
         );
 
         vm.startPrank(operator);
@@ -218,6 +214,26 @@ contract StakingOperatorsTest is Test {
         assertTrue(stakingOps.isActiveOperator(operator));
     }
 
+    function test_requestUnstake_revertsWhileJailed() public {
+        address operator = address(0xB0B);
+        stakeToken.mint(operator, 2e18);
+
+        vm.startPrank(operator);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(operator, 1e18);
+        stakingOps.registerOperator("ipfs://x");
+        vm.stopPrank();
+
+        vm.startPrank(admin);
+        stakingOps.grantRole(stakingOps.SLASHER_ROLE(), admin);
+        stakingOps.jail(operator, uint64(block.timestamp + 7 days));
+        vm.stopPrank();
+
+        vm.prank(operator);
+        vm.expectRevert(StakingOperators.OperatorJailed.selector);
+        stakingOps.requestUnstake(operator, 1e18);
+    }
+
     function test_snapshot_and_stakeAt_checkpoints() public {
         address operator = address(0xB0B);
         stakeToken.mint(operator, 3e18);
@@ -292,5 +308,90 @@ contract StakingOperatorsTest is Test {
         vm.expectRevert(StakingOperators.TooManyActiveOperators.selector);
         stakingOps.registerOperator("ipfs://two");
         vm.stopPrank();
+    }
+
+    function test_adminSetters_updateValues() public {
+        address newSnapshotter = address(0x1234);
+        address newHeartbeatManager = address(0x5678);
+
+        vm.prank(admin);
+        stakingOps.setUnstakeDelay(2 days);
+        assertEq(stakingOps.unstakeDelay(), 2 days);
+
+        vm.prank(admin);
+        stakingOps.setMaxActiveOperators(42);
+        assertEq(stakingOps.maxActiveOperators(), 42);
+
+        vm.prank(admin);
+        stakingOps.setSnapshotter(newSnapshotter);
+        assertEq(stakingOps.snapshotter(), newSnapshotter);
+
+        vm.prank(admin);
+        stakingOps.setHeartbeatManager(newHeartbeatManager);
+        assertEq(stakingOps.heartbeatManager(), newHeartbeatManager);
+
+        ProtocolConfig newConfig = new ProtocolConfig(
+            address(this),
+            address(stakingOps),
+            address(this),
+            address(this),
+            address(this),
+            2,
+            0,
+            5,
+            0,
+            1,
+            1,
+            10,
+            10,
+            100,
+            1e18
+        );
+
+        vm.prank(admin);
+        stakingOps.setProtocolConfig(newConfig);
+        assertEq(address(stakingOps.protocolConfig()), address(newConfig));
+    }
+
+    function test_adminSetters_onlyAdmin() public {
+        address nonAdmin = address(0xBEEF);
+
+        vm.prank(nonAdmin);
+        vm.expectRevert();
+        stakingOps.setUnstakeDelay(2 days);
+
+        vm.prank(nonAdmin);
+        vm.expectRevert();
+        stakingOps.setMaxActiveOperators(10);
+
+        vm.prank(nonAdmin);
+        vm.expectRevert();
+        stakingOps.setSnapshotter(address(0x1234));
+
+        vm.prank(nonAdmin);
+        vm.expectRevert();
+        stakingOps.setHeartbeatManager(address(0x5678));
+    }
+
+    function test_adminSetters_validateBounds() public {
+        vm.prank(admin);
+        vm.expectRevert(StakingOperators.InvalidUnstakeDelay.selector);
+        stakingOps.setUnstakeDelay(0);
+
+        vm.prank(admin);
+        vm.expectRevert(StakingOperators.InvalidUnstakeDelay.selector);
+        stakingOps.setUnstakeDelay(15 days);
+
+        vm.prank(admin);
+        vm.expectRevert(StakingOperators.InvalidMaxActiveOperators.selector);
+        stakingOps.setMaxActiveOperators(0);
+
+        vm.prank(admin);
+        vm.expectRevert(StakingOperators.ZeroAddress.selector);
+        stakingOps.setSnapshotter(address(0));
+
+        vm.prank(admin);
+        vm.expectRevert(StakingOperators.InvalidAddress.selector);
+        stakingOps.setHeartbeatManager(address(0));
     }
 }

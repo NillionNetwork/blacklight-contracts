@@ -172,4 +172,71 @@ contract WeightedCommitteeSelectorTest is Test {
             assertTrue(found, "unknown member returned");
         }
     }
+
+    function test_setMinCommitteeVP_onlyAdmin_and_blocksSelection() public {
+        _makeOperators(4, 2e18);
+
+        uint256 totalVp = 4 * 2e18;
+        uint256 newMin = totalVp + 1;
+
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(WeightedCommitteeSelector.NotAdmin.selector);
+        selector.setMinCommitteeVP(newMin);
+
+        vm.prank(admin);
+        selector.setMinCommitteeVP(newMin);
+        assertEq(selector.minCommitteeVP(), newMin);
+
+        vm.roll(block.number + 1);
+        uint64 snap = stakingOps.snapshot();
+
+        vm.expectRevert(abi.encodeWithSelector(
+            WeightedCommitteeSelector.InsufficientCommitteeVP.selector,
+            totalVp,
+            newMin
+        ));
+        selector.selectCommittee(bytes32("hbKey"), 1, 4, snap);
+    }
+
+    function test_selectCommittee_revertsWhenSnapshotPredatesStake() public {
+        vm.roll(10);
+        uint64 snapshotId = uint64(block.number - 1);
+
+        address operator = address(0xB0B);
+        stakeToken.mint(operator, 1e18);
+        vm.startPrank(operator);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(operator, 1e18);
+        stakingOps.registerOperator("ipfs://x");
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+
+        vm.expectRevert(WeightedCommitteeSelector.ZeroTotalVotingPower.selector);
+        selector.selectCommittee(bytes32("hbKey"), 1, 1, snapshotId);
+    }
+
+    function test_setMaxCommitteeSize_onlyAdmin_and_nonZero() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(WeightedCommitteeSelector.NotAdmin.selector);
+        selector.setMaxCommitteeSize(5);
+
+        vm.prank(admin);
+        selector.setMaxCommitteeSize(5);
+        assertEq(selector.maxCommitteeSize(), 5);
+
+        vm.prank(admin);
+        vm.expectRevert(WeightedCommitteeSelector.ZeroMaxSize.selector);
+        selector.setMaxCommitteeSize(0);
+    }
+
+    function test_setMaxActiveOperators_zeroResetsDefault() public {
+        vm.prank(admin);
+        selector.setMaxActiveOperators(8);
+        assertEq(selector.maxActiveOperators(), 8);
+
+        vm.prank(admin);
+        selector.setMaxActiveOperators(0);
+        assertEq(selector.maxActiveOperators(), 1000);
+    }
 }

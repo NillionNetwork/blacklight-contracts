@@ -6,6 +6,7 @@ import "./helpers/BlacklightFixture.sol";
 import "../src/mocks/MockERC20.sol";
 import "../src/Interfaces.sol";
 import "../src/RewardPolicy.sol";
+import "../src/WeightedCommitteeSelector.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
@@ -66,7 +67,7 @@ contract HeartbeatManagerTest is BlacklightFixture {
         assertTrue(snap != 0);
         assertEq(members.length, 10);
 
-        (HeartbeatManager.HeartbeatStatus status, uint8 currentRound, , , , , , , , ) = manager.heartbeats(hbKey);
+        (HeartbeatManager.HeartbeatStatus status, uint8 currentRound, , , , , ) = manager.heartbeats(hbKey);
         assertEq(uint8(status), uint8(HeartbeatManager.HeartbeatStatus.Pending));
         assertEq(currentRound, 1);
 
@@ -76,7 +77,7 @@ contract HeartbeatManagerTest is BlacklightFixture {
         }
 
         // round info snapshot addresses must be set
-        ( , , , , , , uint32 committeeSize, uint64 snapshotId, bytes32 committeeRoot, , , , address stakingAddr, address selectorAddr, address slashingAddr, address rewardAddr, , , , ) =
+        ( , , , , , uint32 committeeSize, uint64 snapshotId, bytes32 committeeRoot, , , , address stakingAddr, address selectorAddr, address slashingAddr, address rewardAddr, , , , ) =
             manager.rounds(hbKey, 1);
 
         assertEq(committeeSize, 10);
@@ -86,6 +87,18 @@ contract HeartbeatManagerTest is BlacklightFixture {
         assertEq(selectorAddr, address(selector));
         assertEq(slashingAddr, address(jailingPolicy));
         assertEq(rewardAddr, address(rewardPolicy));
+    }
+
+    function test_submitHeartbeat_revertsForUnauthorizedSubmitter() public {
+        bytes memory rawHTX = _defaultRawHTX(42);
+        uint64 submissionBlock = uint64(block.number);
+        bytes32 hbKey = manager.deriveHeartbeatKey(rawHTX, submissionBlock);
+        (uint64 snap, ) = _prepareCommittee(hbKey, 1, 0);
+
+        address attacker = address(0xBEEF);
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(HeartbeatManager.UnauthorizedHeartbeatSubmitter.selector, attacker));
+        manager.submitHeartbeat(rawHTX, snap);
     }
 
     function test_submitHeartbeat_idempotent_noSecondRoundStarted() public {
@@ -110,34 +123,6 @@ contract HeartbeatManagerTest is BlacklightFixture {
             }
         }
         assertEq(startedCount, 1, "round started twice");
-    }
-
-    function test_submitHeartbeat_refundsBondOnValidOutcome() public {
-        uint256 balanceBefore = stakeToken.balanceOf(ops[0]);
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
-        assertEq(stakeToken.balanceOf(address(manager)), heartbeatBond);
-
-        for (uint256 i = 0; i < 5; i++) {
-            _vote(hbKey, round, members, members[i], 1);
-        }
-
-        _finalizeDefault(hbKey, round);
-        assertEq(stakeToken.balanceOf(ops[0]), balanceBefore);
-        assertEq(stakeToken.balanceOf(address(manager)), 0);
-    }
-
-    function test_submitHeartbeat_burnsBondOnInvalidOutcome() public {
-        uint256 balanceBefore = stakeToken.balanceOf(ops[0]);
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
-
-        for (uint256 i = 0; i < 5; i++) {
-            _vote(hbKey, round, members, members[i], 2);
-        }
-
-        _finalizeDefault(hbKey, round);
-        assertEq(stakeToken.balanceOf(ops[0]), balanceBefore - heartbeatBond);
-        assertEq(stakeToken.balanceOf(address(0xdead)), heartbeatBond);
-        assertEq(stakeToken.balanceOf(address(manager)), 0);
     }
 
     function test_submitVerdict_revertsForNonMember() public {
@@ -170,7 +155,7 @@ contract HeartbeatManagerTest is BlacklightFixture {
         bytes32[] memory proof = _proofForMember(hbKey, round, members, voter);
 
         // warp past deadline
-        (, , , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(hbKey, round);
+        (, , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(hbKey, round);
         vm.warp(uint256(deadline) + 1);
 
         vm.prank(voter);
@@ -199,7 +184,7 @@ contract HeartbeatManagerTest is BlacklightFixture {
 
         _finalizeDefault(hbKey, round);
         assertEq(uint8(manager.roundOutcome(hbKey, round)), uint8(ISlashingPolicy.Outcome.ValidThreshold));
-        (HeartbeatManager.HeartbeatStatus status, , , , , , , , , ) = manager.heartbeats(hbKey);
+        (HeartbeatManager.HeartbeatStatus status, , , , , , ) = manager.heartbeats(hbKey);
         assertEq(uint8(status), uint8(HeartbeatManager.HeartbeatStatus.Verified));
     }
 
@@ -212,7 +197,7 @@ contract HeartbeatManagerTest is BlacklightFixture {
 
         _finalizeDefault(hbKey, round);
         assertEq(uint8(manager.roundOutcome(hbKey, round)), uint8(ISlashingPolicy.Outcome.InvalidThreshold));
-        (HeartbeatManager.HeartbeatStatus status, , , , , , , , , ) = manager.heartbeats(hbKey);
+        (HeartbeatManager.HeartbeatStatus status, , , , , , ) = manager.heartbeats(hbKey);
         assertEq(uint8(status), uint8(HeartbeatManager.HeartbeatStatus.Invalid));
     }
 
@@ -242,7 +227,7 @@ contract HeartbeatManagerTest is BlacklightFixture {
         (bytes32 hbKey, uint8 round1, , , address[] memory members1) = _submitPointerAndGetRound();
         _vote(hbKey, round1, members1, members1[0], 1);
 
-        (, , , , , , , , , , uint64 deadline1, , , , , , , , , ) = manager.rounds(hbKey, round1);
+        (, , , , , , , , , uint64 deadline1, , , , , , , , , ) = manager.rounds(hbKey, round1);
         vm.warp(uint256(deadline1) + 1);
 
         vm.recordLogs();
@@ -252,7 +237,7 @@ contract HeartbeatManagerTest is BlacklightFixture {
         // round 1 finalized inconclusive and round2 started
         assertEq(uint8(manager.roundOutcome(hbKey, round1)), uint8(ISlashingPolicy.Outcome.Inconclusive));
 
-        (, uint8 currentRound, uint8 escalationLevel, , , , , , , ) = manager.heartbeats(hbKey);
+        (, uint8 currentRound, uint8 escalationLevel, , , , ) = manager.heartbeats(hbKey);
         assertEq(currentRound, 2);
         assertEq(escalationLevel, 1);
 
@@ -268,24 +253,47 @@ contract HeartbeatManagerTest is BlacklightFixture {
         assertTrue(found, "round2 not started");
 
         // expire after round2 deadline with no quorum
-        (, , , , , , , , , , uint64 deadline2, , , , , , , , , ) = manager.rounds(hbKey, 2);
+        (, , , , , , , , , uint64 deadline2, , , , , , , , , ) = manager.rounds(hbKey, 2);
         vm.warp(uint256(deadline2) + 1);
         manager.escalateOrExpire(hbKey, _defaultRawHTX(1));
 
-        (HeartbeatManager.HeartbeatStatus status2, , , , , , , , , ) = manager.heartbeats(hbKey);
-        assertEq(uint8(status2), uint8(HeartbeatManager.HeartbeatStatus.Expired));
-        uint256 burned = (heartbeatBond * heartbeatBondBurnBps) / 10_000;
-        assertEq(stakeToken.balanceOf(ops[0]), balanceBefore - burned);
-        assertEq(stakeToken.balanceOf(address(0xdead)), burned);
-    }
+        (HeartbeatManager.HeartbeatStatus status2, , , , , , ) = manager.heartbeats(hbKey);
+        assertEq(uint8(status2), uint8(HeartbeatManager.HeartbeatStatus.Expired));    }
 
     function test_escalateOrExpire_revertsOnRawHashMismatch() public {
         (bytes32 hbKey, uint8 round, , , ) = _submitPointerAndGetRound();
-        (, , , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(hbKey, round);
+        (, , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(hbKey, round);
         vm.warp(uint256(deadline) + 1);
 
         vm.expectRevert(HeartbeatManager.RawHTXHashMismatch.selector);
         manager.escalateOrExpire(hbKey, _defaultRawHTX(999));
+    }
+
+    function test_escalateOrExpire_revertsAtDeadline() public {
+        (bytes32 hbKey, uint8 round, , , ) = _submitPointerAndGetRound();
+        (, , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(hbKey, round);
+
+        vm.warp(uint256(deadline));
+        vm.expectRevert(HeartbeatManager.BeforeDeadline.selector);
+        manager.escalateOrExpire(hbKey, _defaultRawHTX(1));
+
+        vm.warp(uint256(deadline) + 1);
+        manager.escalateOrExpire(hbKey, _defaultRawHTX(1));
+
+        (, uint8 currentRound, , , , , ) = manager.heartbeats(hbKey);
+        assertEq(currentRound, 2);
+    }
+
+    function test_escalateOrExpire_revertsOnRawHashMismatch_afterEscalation() public {
+        (bytes32 hbKey, uint8 round, , , ) = _submitPointerAndGetRound();
+        (, , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(hbKey, round);
+        vm.warp(uint256(deadline) + 1);
+        manager.escalateOrExpire(hbKey, _defaultRawHTX(1));
+
+        (, , , , , , , , , uint64 deadline2, , , , , , , , , ) = manager.rounds(hbKey, 2);
+        vm.warp(uint256(deadline2) + 1);
+        vm.expectRevert(HeartbeatManager.RawHTXHashMismatch.selector);
+        manager.escalateOrExpire(hbKey, _defaultRawHTX(2));
     }
 
     function test_moduleUpgrade_doesNotAffectExistingRoundRewardAddress() public {
@@ -316,6 +324,239 @@ contract HeartbeatManagerTest is BlacklightFixture {
         // old policy has rewards, new one doesn't
         assertGt(rewardPolicy.rewards(voters[0]), 0);
         assertEq(newReward.rewards(voters[0]), 0);
+    }
+
+    function test_moduleUpgrade_doesNotAffectExistingRoundSelector() public {
+        (bytes32 hbKey, uint8 round, , , ) = _submitPointerAndGetRound();
+
+        vm.startPrank(admin);
+        WeightedCommitteeSelector newSelector = new WeightedCommitteeSelector(stakingOps, admin, 1, config.maxCommitteeSize());
+        vm.stopPrank();
+
+        config.setModules(address(stakingOps), address(newSelector), address(jailingPolicy), address(rewardPolicy));
+
+        (, , , , , , , , , , , address stakingAddr, address selectorAddr, , , , , , ) =
+            manager.rounds(hbKey, round);
+
+        assertEq(stakingAddr, address(stakingOps));
+        assertEq(selectorAddr, address(selector));
+    }
+
+    function test_distributeRewards_creditsStakerRecipients() public {
+        uint256[] memory stakes = new uint256[](3);
+        for (uint256 i = 0; i < stakes.length; i++) stakes[i] = 2e18;
+        _deploySystem(
+            3,
+            stakes,
+            3,
+            3,
+            5000,
+            5000,
+            1 days,
+            7 days,
+            0
+        );
+
+        address sharedStaker = address(0xBEEF);
+        uint256 stakeAmount = stakingOps.stakeOf(ops[0]);
+
+        vm.prank(ops[0]);
+        stakingOps.requestUnstake(ops[0], stakeAmount);
+        vm.prank(ops[1]);
+        stakingOps.requestUnstake(ops[1], stakeAmount);
+
+        vm.warp(block.timestamp + 1 days + 1);
+
+        vm.prank(ops[0]);
+        stakingOps.withdrawUnstaked(ops[0]);
+        vm.prank(ops[1]);
+        stakingOps.withdrawUnstaked(ops[1]);
+
+        vm.prank(ops[0]);
+        stakingOps.approveStaker(sharedStaker);
+        vm.prank(ops[1]);
+        stakingOps.approveStaker(sharedStaker);
+
+        stakeToken.mint(sharedStaker, stakeAmount * 2);
+        vm.startPrank(sharedStaker);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(ops[0], stakeAmount);
+        stakingOps.stakeTo(ops[1], stakeAmount);
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
+
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        assertEq(members.length, 3);
+
+        for (uint256 i = 0; i < members.length; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
+        _finalizeDefault(hbKey, round);
+
+        rewardToken.mint(governance, 300);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        rewardPolicy.fund(300);
+        vm.warp(block.timestamp + 2 days);
+        rewardPolicy.sync();
+
+        manager.distributeRewards(hbKey, round, members);
+
+        assertEq(rewardPolicy.rewards(sharedStaker), 200);
+        assertEq(rewardPolicy.rewards(ops[2]), 100);
+        assertEq(rewardPolicy.rewards(ops[0]), 0);
+        assertEq(rewardPolicy.rewards(ops[1]), 0);
+    }
+
+    function test_distributeRewards_sortsStakerRecipients() public {
+        uint256[] memory stakes = new uint256[](3);
+        for (uint256 i = 0; i < stakes.length; i++) stakes[i] = 2e18;
+        _deploySystem(
+            3,
+            stakes,
+            3,
+            3,
+            5000,
+            5000,
+            1 days,
+            7 days,
+            0
+        );
+
+        address stakerLow = address(0x1001);
+        address stakerHigh = address(0xF000);
+
+        address opLow = ops[0];
+        address opHigh = ops[1];
+        if (opLow > opHigh) {
+            opLow = ops[1];
+            opHigh = ops[0];
+        }
+
+        uint256 stakeAmount = stakingOps.stakeOf(opLow);
+        vm.prank(opLow);
+        stakingOps.requestUnstake(opLow, stakeAmount);
+        vm.prank(opHigh);
+        stakingOps.requestUnstake(opHigh, stakeAmount);
+
+        vm.warp(block.timestamp + 1 days + 1);
+
+        vm.prank(opLow);
+        stakingOps.withdrawUnstaked(opLow);
+        vm.prank(opHigh);
+        stakingOps.withdrawUnstaked(opHigh);
+
+        vm.prank(opLow);
+        stakingOps.approveStaker(stakerHigh);
+        vm.prank(opHigh);
+        stakingOps.approveStaker(stakerLow);
+
+        stakeToken.mint(stakerHigh, stakeAmount);
+        stakeToken.mint(stakerLow, stakeAmount);
+        vm.startPrank(stakerHigh);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(opLow, stakeAmount);
+        vm.stopPrank();
+        vm.startPrank(stakerLow);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(opHigh, stakeAmount);
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
+
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        for (uint256 i = 0; i < members.length; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
+        _finalizeDefault(hbKey, round);
+
+        rewardToken.mint(governance, 300);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        rewardPolicy.fund(300);
+        vm.warp(block.timestamp + 2 days);
+        rewardPolicy.sync();
+
+        manager.distributeRewards(hbKey, round, members);
+
+        address remaining = ops[0];
+        if (remaining == opLow || remaining == opHigh) remaining = ops[1];
+        if (remaining == opLow || remaining == opHigh) remaining = ops[2];
+
+        assertEq(rewardPolicy.rewards(stakerLow), 100);
+        assertEq(rewardPolicy.rewards(stakerHigh), 100);
+        assertEq(rewardPolicy.rewards(remaining), 100);
+    }
+
+    function test_distributeRewards_aggregatesNonAdjacentStakers() public {
+        uint256[] memory stakes = new uint256[](4);
+        for (uint256 i = 0; i < stakes.length; i++) stakes[i] = 2e18;
+        _deploySystem(
+            4,
+            stakes,
+            4,
+            4,
+            5000,
+            5000,
+            1 days,
+            7 days,
+            0
+        );
+
+        address[] memory sortedOps = new address[](ops.length);
+        for (uint256 i = 0; i < ops.length; i++) sortedOps[i] = ops[i];
+        _sortMembers(sortedOps);
+
+        address sharedStaker = address(0xBEEF);
+        address opA = sortedOps[0];
+        address opB = sortedOps[2];
+
+        uint256 stakeAmount = stakingOps.stakeOf(opA);
+        vm.prank(opA);
+        stakingOps.requestUnstake(opA, stakeAmount);
+        vm.prank(opB);
+        stakingOps.requestUnstake(opB, stakeAmount);
+
+        vm.warp(block.timestamp + 1 days + 1);
+
+        vm.prank(opA);
+        stakingOps.withdrawUnstaked(opA);
+        vm.prank(opB);
+        stakingOps.withdrawUnstaked(opB);
+
+        vm.prank(opA);
+        stakingOps.approveStaker(sharedStaker);
+        vm.prank(opB);
+        stakingOps.approveStaker(sharedStaker);
+
+        stakeToken.mint(sharedStaker, stakeAmount * 2);
+        vm.startPrank(sharedStaker);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(opA, stakeAmount);
+        stakingOps.stakeTo(opB, stakeAmount);
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
+
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        for (uint256 i = 0; i < members.length; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
+        _finalizeDefault(hbKey, round);
+
+        rewardToken.mint(governance, 400);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        rewardPolicy.fund(400);
+        vm.warp(block.timestamp + 2 days);
+        rewardPolicy.sync();
+
+        manager.distributeRewards(hbKey, round, members);
+
+        assertEq(rewardPolicy.rewards(sharedStaker), 200);
+        assertEq(rewardPolicy.rewards(sortedOps[1]), 100);
+        assertEq(rewardPolicy.rewards(sortedOps[3]), 100);
     }
 
     function test_submitVerdictsBatched_signature() public {
@@ -350,6 +591,19 @@ contract HeartbeatManagerTest is BlacklightFixture {
         manager.submitVerdictsBatched(batch);
     }
 
+    function test_submitVerdict_revertsAfterBatchedVote() public {
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        address voter = members[0];
+        uint256 pk = _findPk(voter);
+
+        _batchedVote(hbKey, round, members, pk, voter, 1);
+
+        bytes32[] memory proof = _proofForMember(hbKey, round, members, voter);
+        vm.prank(voter);
+        vm.expectRevert(HeartbeatManager.AlreadyResponded.selector);
+        manager.submitVerdict(hbKey, 1, proof);
+    }
+
     function test_submitVerdictsBatched_respects_configMaxBatch() public {
         // shrink max batch size to 2
         config.setParams(
@@ -362,9 +616,7 @@ contract HeartbeatManagerTest is BlacklightFixture {
             config.responseWindow(),
             config.jailDuration(),
             2,
-            config.minOperatorStake(),
-            config.heartbeatBond(),
-            config.heartbeatBondBurnBps()
+            config.minOperatorStake()
         );
 
         (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
@@ -418,7 +670,21 @@ contract HeartbeatManagerTest is BlacklightFixture {
         manager.distributeRewards(hbKey, round, voters);
     }
 
-    function test_distributeRewards_revertsOnCountMismatch() public {
+    function test_distributeRewards_revertsOnInsufficientBudget() public {
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 1);
+
+        _finalizeDefault(hbKey, round);
+
+        address[] memory voters = new address[](5);
+        for (uint256 i = 0; i < 5; i++) voters[i] = members[i];
+
+        vm.expectRevert(RewardPolicy.InsufficientBudget.selector);
+        manager.distributeRewards(hbKey, round, voters);
+        assertFalse(manager.rewardsDone(hbKey, round));
+    }
+
+    function test_distributeRewards_revertsOnWeightMismatch_validOutcome() public {
         (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
         for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 1);
 
@@ -432,7 +698,11 @@ contract HeartbeatManagerTest is BlacklightFixture {
         address[] memory voters = new address[](4);
         for (uint256 i = 0; i < 4; i++) voters[i] = members[i];
 
-        vm.expectRevert(abi.encodeWithSelector(HeartbeatManager.InvalidVoterCount.selector, uint256(4), uint256(5)));
+        uint256 sumWeights = 4 * 2e18;
+        uint256 expectedStake = 5 * 2e18;
+        vm.expectRevert(
+            abi.encodeWithSelector(HeartbeatManager.InvalidVoterWeightSum.selector, sumWeights, expectedStake)
+        );
         manager.distributeRewards(hbKey, round, voters);
     }
 
@@ -468,6 +738,139 @@ contract HeartbeatManagerTest is BlacklightFixture {
 
         vm.expectRevert(HeartbeatManager.InvalidVoterInList.selector);
         manager.distributeRewards(hbKey, round, voters);
+    }
+
+    function test_distributeRewards_revertsWhenAccountingFrozen() public {
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 1);
+
+        _finalizeDefault(hbKey, round);
+
+        rewardToken.mint(governance, 100);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        rewardPolicy.fund(100);
+        vm.warp(block.timestamp + 2 days);
+        rewardPolicy.sync();
+
+        vm.prank(address(rewardPolicy));
+        rewardToken.transfer(address(0xBEEF), 100);
+        rewardPolicy.sync();
+        assertTrue(rewardPolicy.accountingFrozen());
+
+        address[] memory voters = new address[](5);
+        for (uint256 i = 0; i < 5; i++) voters[i] = members[i];
+
+        vm.expectRevert(RewardPolicy.AccountingFrozen.selector);
+        manager.distributeRewards(hbKey, round, voters);
+    }
+
+    function test_distributeRewards_fallsBackToOperatorWhenStakerCleared() public {
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 1);
+
+        _finalizeDefault(hbKey, round);
+
+        address operator = members[0];
+        uint256 stakeAmount = stakingOps.stakeOf(operator);
+        vm.prank(operator);
+        stakingOps.requestUnstake(operator, stakeAmount);
+        vm.warp(block.timestamp + 1 days + 1);
+        vm.prank(operator);
+        stakingOps.withdrawUnstaked(operator);
+        assertEq(stakingOps.operatorStaker(operator), address(0));
+
+        rewardToken.mint(governance, 100);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        rewardPolicy.fund(100);
+        vm.warp(block.timestamp + 2 days);
+        rewardPolicy.sync();
+
+        address[] memory voters = new address[](5);
+        for (uint256 i = 0; i < 5; i++) voters[i] = members[i];
+
+        manager.distributeRewards(hbKey, round, voters);
+
+        assertEq(rewardPolicy.rewards(operator), 20);
+    }
+
+    function test_minOperatorStake_change_after_votes_does_not_break_distribution() public {
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 1);
+
+        config.setParams(
+            config.baseCommitteeSize(),
+            config.committeeSizeGrowthBps(),
+            config.maxCommitteeSize(),
+            config.maxEscalations(),
+            config.quorumBps(),
+            config.verificationBps(),
+            config.responseWindow(),
+            config.jailDuration(),
+            config.maxVoteBatchSize(),
+            100e18
+        );
+
+        _finalizeDefault(hbKey, round);
+
+        rewardToken.mint(governance, 100);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        rewardPolicy.fund(100);
+        vm.warp(block.timestamp + 2 days);
+        rewardPolicy.sync();
+
+        address[] memory voters = new address[](5);
+        for (uint256 i = 0; i < 5; i++) voters[i] = members[i];
+        manager.distributeRewards(hbKey, round, voters);
+
+        assertEq(rewardPolicy.rewards(voters[0]), 20);
+    }
+
+    function test_moduleUpgrade_doesNotAffectExistingRoundStakingOps() public {
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        for (uint256 i = 0; i < 5; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
+
+        _finalizeDefault(hbKey, round);
+
+        address sharedStaker = address(0xBEEF);
+        address operator = members[0];
+        uint256 stakeAmount = stakingOps.stakeOf(operator);
+
+        vm.prank(operator);
+        stakingOps.requestUnstake(operator, stakeAmount);
+        vm.warp(block.timestamp + 1 days + 1);
+        vm.prank(operator);
+        stakingOps.withdrawUnstaked(operator);
+
+        vm.prank(operator);
+        stakingOps.approveStaker(sharedStaker);
+        stakeToken.mint(sharedStaker, stakeAmount);
+        vm.startPrank(sharedStaker);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(operator, stakeAmount);
+        vm.stopPrank();
+
+        vm.startPrank(admin);
+        StakingOperators newStaking = new StakingOperators(IERC20(address(stakeToken)), admin, 1 days);
+        WeightedCommitteeSelector newSelector = new WeightedCommitteeSelector(newStaking, admin, 1, config.maxCommitteeSize());
+        vm.stopPrank();
+
+        config.setModules(address(newStaking), address(newSelector), address(jailingPolicy), address(rewardPolicy));
+
+        rewardToken.mint(governance, 100);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        rewardPolicy.fund(100);
+        vm.warp(block.timestamp + 2 days);
+        rewardPolicy.sync();
+
+        address[] memory voters = new address[](5);
+        for (uint256 i = 0; i < 5; i++) voters[i] = members[i];
+
+        manager.distributeRewards(hbKey, round, voters);
+
+        assertEq(rewardPolicy.rewards(sharedStaker), 20);
+        assertEq(rewardPolicy.rewards(operator), 0);
     }
 
     function test_committeeRoot_matchesOffchainMerkleComputation() public {
@@ -569,4 +972,6 @@ contract HeartbeatManagerTest is BlacklightFixture {
         manager.setSlashingGasLimit(123);
         assertEq(manager.slashingGasLimit(), 123);
     }
+
+    // Note: config update behavior is covered in a dedicated test contract to avoid stack depth issues.
 }

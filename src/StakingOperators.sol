@@ -44,8 +44,8 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     bytes32 public constant SLASHER_ROLE = keccak256("SLASHER_ROLE");
 
     uint256 private constant MAX_BATCH_POKE = 50;
-    uint256 private constant MIN_DELAY = 1 days;
-    uint256 private constant MAX_DELAY = 365 days;
+    uint256 private constant MIN_DELAY = 1 minutes;
+    uint256 private constant MAX_DELAY = 14 days;
     uint256 private constant DEFAULT_MAX_ACTIVE_OPERATORS = 1000;
 
     IERC20 private immutable _stakingToken;
@@ -223,9 +223,8 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
 
     function pokeActiveMany(address[] calldata operators) external {
         if (operators.length > MAX_BATCH_POKE) revert BatchTooLarge();
-        for (uint256 i = 0; i < operators.length; ) {
+        for (uint256 i = 0; i < operators.length; ++i) {
             _setActiveInSet(operators[i], _computeIsActive(operators[i]));
-            ++i;
         }
     }
 
@@ -307,14 +306,13 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         uint256 payout;
         uint256 writeIndex;
 
-        for (uint256 i = 0; i < len; ) {
+        for (uint256 i = 0; i < len; ++i) {
             IStakingOperators.Tranche memory t = u.tranches[i];
             if (block.timestamp >= t.releaseTime) payout += t.amount;
             else {
                 u.tranches[writeIndex] = t;
                 ++writeIndex;
             }
-            ++i;
         }
         while (u.tranches.length > writeIndex) u.tranches.pop();
         if (payout == 0) revert NotReady();
@@ -407,7 +405,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         uint256 len = u.tranches.length;
         uint256 writeIndex;
 
-        for (uint256 i = 0; i < len; ) {
+        for (uint256 i = 0; i < len; ++i) {
             IStakingOperators.Tranche memory t = u.tranches[i];
             if (remaining != 0 && t.amount <= remaining) {
                 remaining -= t.amount;
@@ -421,7 +419,6 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
                 }
                 ++writeIndex;
             }
-            ++i;
         }
 
         while (u.tranches.length > writeIndex) u.tranches.pop();

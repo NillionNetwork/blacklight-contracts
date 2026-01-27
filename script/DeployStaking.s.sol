@@ -28,7 +28,7 @@ contract DeployStaking is Script {
         );
         console2.log("StakingOperators deployed at:", address(staking));
 
-        uint256 initialMint = 1_000_000 ether;
+        uint256 initialMint = 1_000_000e6;
         test.mint(deployer, initialMint);
         console2.log("Minted TEST to deployer:", initialMint);
 

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import "forge-std/Test.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "../src/mocks/MockERC20.sol";
 import "../src/mocks/MockL1StandardBridge.sol";
@@ -117,5 +118,24 @@ contract EmissionsControllerTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(EmissionsController.InvalidEpoch.selector, uint256(3)));
         controller.emissionForEpoch(3);
+    }
+
+    function test_setL2GasLimit_onlyOwner() public {
+        address nonOwner = address(0xBEEF);
+        vm.prank(nonOwner);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
+        controller.setL2GasLimit(123);
+
+        controller.setL2GasLimit(123);
+        assertEq(controller.l2GasLimit(), 123);
+    }
+
+    function test_ensureBridgeApproval_restoresMaxAllowance() public {
+        vm.prank(address(controller));
+        token.approve(address(bridge), 0);
+        assertEq(token.allowance(address(controller), address(bridge)), 0);
+
+        controller.ensureBridgeApproval();
+        assertEq(token.allowance(address(controller), address(bridge)), type(uint256).max);
     }
 }
