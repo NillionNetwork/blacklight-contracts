@@ -163,7 +163,42 @@ DEPLOYER_ADDRESS=$(cast wallet address --mnemonic "$MNEMONIC" --mnemonic-index 0
 export RPC_URL
 export PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY"
 
+# Deploy Blacklight contracts
 bash ./script/deploy_sc.sh
+
+# Deploy ERC-8004 with HeartbeatManager integration
+if [ -f "contract_addresses.env" ]; then
+  source contract_addresses.env
+  HEARTBEAT_MANAGER="${HEARTBEAT_MANAGER:-}" bash ./script/deploy_erc8004.sh
+fi
+
+# Grant HeartbeatSubmitter role to first 5 accounts
+if [ -f "contract_addresses.env" ]; then
+  source contract_addresses.env
+
+  if [ -n "${HEARTBEAT_MANAGER:-}" ]; then
+    echo -e "${BLUE}Granting HeartbeatSubmitter role to first 5 accounts...${NC}"
+
+    # HEARTBEAT_SUBMITTER_ROLE = keccak256("HEARTBEAT_SUBMITTER_ROLE")
+    HEARTBEAT_SUBMITTER_ROLE=$(cast keccak "HEARTBEAT_SUBMITTER_ROLE")
+
+    # Account 0 already has the role (granted in constructor to owner)
+    # Grant to accounts 1-4
+    for i in 1 2 3 4; do
+      ACCOUNT_ADDRESS=$(cast wallet address --mnemonic "$MNEMONIC" --mnemonic-index $i)
+      echo -e "  Granting role to account $i: $ACCOUNT_ADDRESS"
+      cast send "$HEARTBEAT_MANAGER" \
+        "grantRole(bytes32,address)" \
+        "$HEARTBEAT_SUBMITTER_ROLE" \
+        "$ACCOUNT_ADDRESS" \
+        --rpc-url "$RPC_URL" \
+        --private-key "$DEPLOYER_PRIVATE_KEY" \
+        >/dev/null
+    done
+
+    echo -e "${GREEN}HeartbeatSubmitter role granted to accounts 0-4${NC}"
+  fi
+fi
 
 # Fund and stake for operators (accounts 1 to NUM_ACCOUNTS-1)
 if [ "$SKIP_FUNDING" != "true" ] && [ "$NUM_ACCOUNTS" -gt 1 ]; then

@@ -190,6 +190,34 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         emit ModulesUpdated(stakingOps_, selector_, slashing_, reward_);
     }
 
+    function setStakingOps(address stakingOps_) external onlyOwner {
+        if (stakingOps_ == address(0)) revert ZeroAddress();
+        _requireContract(stakingOps_);
+        _stakingOps = stakingOps_;
+        emit ModulesUpdated(_stakingOps, _selector, _slashing, _reward);
+    }
+
+    function setCommitteeSelector(address selector_) external onlyOwner {
+        if (selector_ == address(0)) revert ZeroAddress();
+        _requireContract(selector_);
+        _selector = selector_;
+        emit ModulesUpdated(_stakingOps, _selector, _slashing, _reward);
+    }
+
+    function setSlashingPolicy(address slashing_) external onlyOwner {
+        if (slashing_ == address(0)) revert ZeroAddress();
+        _requireContract(slashing_);
+        _slashing = slashing_;
+        emit ModulesUpdated(_stakingOps, _selector, _slashing, _reward);
+    }
+
+    function setRewardPolicy(address reward_) external onlyOwner {
+        if (reward_ == address(0)) revert ZeroAddress();
+        _requireContract(reward_);
+        _reward = reward_;
+        emit ModulesUpdated(_stakingOps, _selector, _slashing, _reward);
+    }
+
     function setNodeVersion(string calldata newVersion) external onlyOwner {
         string memory oldVersion = _nodeVersion;
         _nodeVersion = newVersion;

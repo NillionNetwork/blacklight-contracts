@@ -98,3 +98,11 @@ interface IStakingOperators {
     function slash(address operator, uint256 amount) external;
     function jail(address operator, uint64 untilTimestamp) external;
 }
+
+interface IValidationRegistry {
+    function onHeartbeatFinalized(
+        bytes32 rawHTXHash,
+        uint8 response,
+        bytes32 heartbeatKey
+    ) external;
+}
