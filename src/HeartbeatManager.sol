@@ -124,7 +124,6 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
     mapping(bytes32 => mapping(uint8 => bool)) public rewardsDone;
     mapping(bytes32 => mapping(uint8 => ISlashingPolicy.Outcome)) public roundOutcome;
     mapping(bytes32 => mapping(uint8 => bool)) public slashingNotified;
-    mapping(bytes32 => address) public heartbeatValidationSource;
 
     event ConfigUpdated(address config);
     event HeartbeatEnqueued(bytes32 indexed heartbeatKey, bytes rawHTX, address indexed submitter);
@@ -203,8 +202,10 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         r.jailDurationSec   = SafeCast.toUint64(config.jailDuration());
     }
 
-    function _submitHeartbeat(bytes calldata rawHTX, uint64 snapshotId)
-        internal
+    function submitHeartbeat(bytes calldata rawHTX, uint64 snapshotId)
+        external
+        whenNotPaused
+        nonReentrant
         returns (bytes32 heartbeatKey)
     {
         if (!hasRole(HEARTBEAT_SUBMITTER_ROLE, msg.sender)) {
@@ -233,27 +234,6 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         }
 
         emit HeartbeatEnqueued(heartbeatKey, rawHTX, msg.sender);
-    }
-
-    function submitHeartbeat(bytes calldata rawHTX, uint64 snapshotId)
-        external
-        whenNotPaused
-        nonReentrant
-        returns (bytes32 heartbeatKey)
-    {
-        heartbeatKey = _submitHeartbeat(rawHTX, snapshotId);
-    }
-
-    function submitHeartbeatFromValidation(bytes calldata rawHTX, uint64 snapshotId)
-        external
-        whenNotPaused
-        nonReentrant
-        returns (bytes32 heartbeatKey)
-    {
-        heartbeatKey = _submitHeartbeat(rawHTX, snapshotId);
-
-        // Store validation source for callback
-        heartbeatValidationSource[heartbeatKey] = msg.sender;
     }
 
     function _startRound(bytes32 heartbeatKey, uint8 round, uint64 explicitSnapshotId, bytes calldata rawHTX) internal returns (address[] memory members) {
@@ -468,19 +448,6 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         emit RoundFinalized(heartbeatKey, round, outcome);
 
         _notifySlashing(heartbeatKey, round, r, outcome);
-
-        // Notify ValidationRegistry if this heartbeat originated from one
-        address validationSource = heartbeatValidationSource[heartbeatKey];
-        if (validationSource != address(0)) {
-            uint8 response = outcome == ISlashingPolicy.Outcome.ValidThreshold ? 100
-                           : outcome == ISlashingPolicy.Outcome.InvalidThreshold ? 0
-                           : 50;
-            try IValidationRegistry(validationSource).onHeartbeatFinalized(
-                w.rawHTXHash,
-                response,
-                heartbeatKey
-            ) {} catch {}
-        }
     }
 
     function _notifySlashing(bytes32 heartbeatKey, uint8 round, RoundInfo storage r, ISlashingPolicy.Outcome outcome) internal {

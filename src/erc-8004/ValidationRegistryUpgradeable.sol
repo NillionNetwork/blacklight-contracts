@@ -12,7 +12,7 @@ interface IIdentityRegistry {
 
 /// @dev Matches HeartbeatManager.submitHeartbeatFromValidation. This contract must be granted HEARTBEAT_SUBMITTER_ROLE when used.
 interface IHeartbeatManager {
-    function submitHeartbeatFromValidation(bytes calldata rawHTX, uint64 snapshotId) external returns (bytes32 heartbeatKey);
+    function submitHeartbeat(bytes calldata rawHTX, uint64 snapshotId) external returns (bytes32 heartbeatKey);
 }
 
 contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
@@ -136,7 +136,7 @@ contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
             bytes memory rawHTX = abi.encode(validatorAddress, agentId, requestURI, requestHash);
             bytes32 rawHTXHash = keccak256(rawHTX);
             $._rawHTXHashToRequestHash[rawHTXHash] = requestHash;
-            IHeartbeatManager(_heartbeatManager).submitHeartbeatFromValidation(rawHTX, snapshotId);
+            IHeartbeatManager(_heartbeatManager).submitHeartbeat(rawHTX, snapshotId);
         }
     }
 
