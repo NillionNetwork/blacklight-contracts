@@ -55,7 +55,7 @@ contract DeployBlacklight is Script {
         uint8 maxEscalations = uint8(vm.envOr("MAX_ESCALATIONS", uint256(3))); // 3 escalations
         uint16 quorumBps = uint16(vm.envOr("QUORUM_BPS", uint256(9000))); // 90%
         uint16 verificationBps = uint16(vm.envOr("VERIFICATION_BPS", uint256(7000))); // 70%
-        uint256 responseWindow = vm.envOr("RESPONSE_WINDOW", uint256(5 minutes));
+        uint256 responseWindow = vm.envOr("RESPONSE_WINDOW", uint256(30 seconds));
         uint256 jailDuration = vm.envOr("JAIL_DURATION", uint256(2 minutes));
         uint256 minOperatorStake = vm.envOr("MIN_OPERATOR_STAKE", uint256(10e6));
         uint256 minCommitteeVP = vm.envOr("MIN_COMMITTEE_VP", uint256(1)); // Minimum voting power for committee
