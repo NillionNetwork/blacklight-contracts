@@ -28,6 +28,7 @@ import "../src/mocks/MockL1StandardBridge.sol";
 ///      - RESPONSE_WINDOW: Response window in seconds (default: 1 hour)
 ///      - JAIL_DURATION: Jail duration in seconds (default: 1 day)
 ///      - MIN_OPERATOR_STAKE: Minimum stake for operator activation (default: 1000e18)
+///      - MIN_COMMITTEE_VP: Minimum voting power required for committee selection (default: 1)
 ///      - USE_NOOP_SLASHING: Set to "true" to use NoOpSlashingPolicy instead of JailingPolicy (default: false)
 ///      - DEPLOY_EMISSIONS: Set to "true" to deploy EmissionsController (default: false)
 contract DeployBlacklight is Script {
@@ -54,9 +55,10 @@ contract DeployBlacklight is Script {
         uint8 maxEscalations = uint8(vm.envOr("MAX_ESCALATIONS", uint256(3))); // 3 escalations
         uint16 quorumBps = uint16(vm.envOr("QUORUM_BPS", uint256(9000))); // 90%
         uint16 verificationBps = uint16(vm.envOr("VERIFICATION_BPS", uint256(7000))); // 70%
-        uint256 responseWindow = vm.envOr("RESPONSE_WINDOW", uint256(5 minutes));
+        uint256 responseWindow = vm.envOr("RESPONSE_WINDOW", uint256(30 seconds));
         uint256 jailDuration = vm.envOr("JAIL_DURATION", uint256(2 minutes));
         uint256 minOperatorStake = vm.envOr("MIN_OPERATOR_STAKE", uint256(10e6));
+        uint256 minCommitteeVP = vm.envOr("MIN_COMMITTEE_VP", uint256(1)); // Minimum voting power for committee
         bool useNoOpSlashing = vm.envOr("USE_NOOP_SLASHING", false);
         bool deployEmissions = vm.envOr("DEPLOY_EMISSIONS", false);
 
@@ -76,17 +78,21 @@ contract DeployBlacklight is Script {
         deployed.selector = new WeightedCommitteeSelector(
             deployed.stakingOps,
             deployer,
-            0, // minCommitteeVP (can be updated later)
+            minCommitteeVP,
             maxCommitteeSize
         );
 
-        // Deploy ProtocolConfig with placeholder slashing/reward
+        // Deploy NoOpSlashingPolicy first (no dependencies, used as initial placeholder)
+        NoOpSlashingPolicy noOpSlashing = new NoOpSlashingPolicy();
+
+        // Deploy ProtocolConfig with NoOpSlashingPolicy as placeholder for both slashing and reward
+        // RewardPolicy will be set later via setRewardPolicy() after HeartbeatManager exists
         deployed.config = new ProtocolConfig(
             deployer, // owner
             address(deployed.stakingOps),
             address(deployed.selector),
-            address(0x1111), // placeholder slashing
-            address(0x2222), // placeholder reward
+            address(noOpSlashing), // slashing (placeholder, will be updated if using JailingPolicy)
+            address(noOpSlashing), // reward (placeholder, will be updated)
             baseCommitteeSize,
             0, // committeeSizeGrowthBps (no growth)
             maxCommitteeSize,
@@ -99,35 +105,29 @@ contract DeployBlacklight is Script {
             minOperatorStake
         );
 
-        // Deploy HeartbeatManager
+        // Deploy HeartbeatManager (now possible since ProtocolConfig exists)
         deployed.manager = new HeartbeatManager(deployed.config, deployer);
 
-        // Deploy RewardPolicy
+        // Deploy RewardPolicy (now possible since HeartbeatManager exists)
         deployed.rewardPolicy = new RewardPolicy(
             IERC20(address(deployed.token)),
             address(deployed.manager),
             deployer,
-            1 days, // epochDuration
+            1 minutes, // epochDuration
             0 // maxPayoutPerFinalize (0 = unlimited)
         );
 
-        // Deploy Slashing Policy
+        // Set the real RewardPolicy
+        deployed.config.setRewardPolicy(address(deployed.rewardPolicy));
+
+        // Deploy and set final Slashing Policy
         if (useNoOpSlashing) {
-            NoOpSlashingPolicy noOpPolicy = new NoOpSlashingPolicy();
-            deployed.slashingPolicy = address(noOpPolicy);
+            deployed.slashingPolicy = address(noOpSlashing);
         } else {
             JailingPolicy jailingPolicy = new JailingPolicy(address(deployed.manager));
             deployed.slashingPolicy = address(jailingPolicy);
+            deployed.config.setSlashingPolicy(deployed.slashingPolicy);
         }
-
-        // Wire everything together
-        // Update ProtocolConfig with real modules
-        deployed.config.setModules(
-            address(deployed.stakingOps),
-            address(deployed.selector),
-            deployed.slashingPolicy,
-            address(deployed.rewardPolicy)
-        );
 
         // Configure StakingOperators
         deployed.stakingOps.setProtocolConfig(deployed.config);
