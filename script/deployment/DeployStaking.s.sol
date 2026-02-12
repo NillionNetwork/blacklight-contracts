@@ -4,8 +4,8 @@ pragma solidity ^0.8.22;
 import "forge-std/Script.sol";
 import "forge-std/console2.sol";
 
-import "../src/mocks/TESTToken.sol";
-import "../src/StakingOperators.sol";
+import "../../src/mocks/TESTToken.sol";
+import "../../src/StakingOperators.sol";
 
 /// @notice Deploys TEST token + staking contract.
 ///         Uses PRIVATE_KEY as deployer/admin/minter.

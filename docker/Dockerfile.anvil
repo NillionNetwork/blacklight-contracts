@@ -12,7 +12,7 @@ COPY . .
 # Copy scripts
 COPY docker/start-anvil.sh /usr/local/bin/start-anvil.sh
 
-RUN chmod +x /app/script/*.sh && \
+RUN find /app/script -type f -name "*.sh" -exec chmod +x {} + && \
     chown -R foundry:foundry /app/
 
 RUN chmod +x /usr/local/bin/start-anvil.sh && \

@@ -1,0 +1,14 @@
+{
+  "unstakeDelay": 60,
+  "baseCommitteeSize": 10,
+  "maxCommitteeSize": 200,
+  "maxEscalations": 3,
+  "quorumBps": 9000,
+  "verificationBps": 7000,
+  "responseWindow": 30,
+  "jailDuration": 120,
+  "minOperatorStake": 10000000,
+  "minCommitteeVP": 1,
+  "useNoOpSlashing": false,
+  "deployEmissions": false
+}

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.22;
 
 import "forge-std/Script.sol";
-import "../src/mocks/TESTToken.sol";
-import "../src/mocks/BatchFunder.sol";
-import "../src/StakingOperators.sol";
+import "../../src/mocks/TESTToken.sol";
+import "../../src/mocks/BatchFunder.sol";
+import "../../src/StakingOperators.sol";
 
 /// @title FundOperators
 /// @notice Batch fund and stake for multiple operators efficiently

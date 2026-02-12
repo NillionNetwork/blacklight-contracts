@@ -2,6 +2,7 @@
 *.env
 .env
 .env.*
+!.env.sample
 
 # Foundry/Solidity build artifacts
 out/
@@ -34,4 +35,3 @@ lib/
 coverage/
 *.profraw
 *.profdata
-
