@@ -7,12 +7,14 @@ import "./helpers/BlacklightFixture.sol";
 contract JailingPolicyTest is BlacklightFixture {
     function setUp() public {
         uint256[] memory stakes = new uint256[](12);
-        for (uint256 i = 0; i < stakes.length; i++) stakes[i] = 2e18;
+        for (uint256 i = 0; i < stakes.length; i++) {
+            stakes[i] = 2e18;
+        }
         _deploySystem(
             12,
             stakes,
-            10,   // baseCommitteeSize
-            10,   // maxCommitteeSize
+            10, // baseCommitteeSize
+            10, // maxCommitteeSize
             5000, // quorumBps
             5000, // verificationBps
             1 days,
@@ -22,14 +24,22 @@ contract JailingPolicyTest is BlacklightFixture {
     }
 
     function test_roundIsRecordedOnFinalize() public {
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
 
         // finalize valid threshold
-        for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 1);
+        for (uint256 i = 0; i < 5; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
 
         _finalizeDefault(hbKey, round);
-        (bool set, ISlashingPolicy.Outcome outcome, bytes32 root, address stakingAddr, uint64 jailDur, uint32 committeeSize) =
-            jailingPolicy.roundRecord(hbKey, round);
+        (
+            bool set,
+            ISlashingPolicy.Outcome outcome,
+            bytes32 root,
+            address stakingAddr,
+            uint64 jailDur,
+            uint32 committeeSize
+        ) = jailingPolicy.roundRecord(hbKey, round);
 
         assertTrue(set);
         assertEq(uint8(outcome), uint8(ISlashingPolicy.Outcome.ValidThreshold));
@@ -40,10 +50,12 @@ contract JailingPolicyTest is BlacklightFixture {
     }
 
     function test_enforceJailFromMembers_jailsNonvoters_and_incorrectVoters() public {
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
 
         // 4 valid votes, 1 invalid, then a final valid vote to reach threshold.
-        for (uint256 i = 0; i < 4; i++) _vote(hbKey, round, members, members[i], 1);
+        for (uint256 i = 0; i < 4; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
         _vote(hbKey, round, members, members[5], 2); // incorrect voter
         _vote(hbKey, round, members, members[4], 1); // pushes valid stake to threshold
 
@@ -72,9 +84,11 @@ contract JailingPolicyTest is BlacklightFixture {
     }
 
     function test_inconclusiveVote_notJailedOnValidOutcome() public {
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
 
-        for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 1);
+        for (uint256 i = 0; i < 5; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
         _vote(hbKey, round, members, members[5], 3);
 
         _finalizeDefault(hbKey, round);
@@ -91,9 +105,11 @@ contract JailingPolicyTest is BlacklightFixture {
     }
 
     function test_inconclusiveVote_notJailedOnInvalidOutcome() public {
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
 
-        for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 2);
+        for (uint256 i = 0; i < 5; i++) {
+            _vote(hbKey, round, members, members[i], 2);
+        }
         _vote(hbKey, round, members, members[5], 3);
 
         _finalizeDefault(hbKey, round);
@@ -110,20 +126,26 @@ contract JailingPolicyTest is BlacklightFixture {
     }
 
     function test_enforceJailFromMembers_revertsOnRootMismatchOrUnsorted() public {
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
-        for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 1);
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
+        for (uint256 i = 0; i < 5; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
 
         _finalizeDefault(hbKey, round);
         // unsorted list
         address[] memory unsorted = new address[](members.length);
-        for (uint256 i = 0; i < members.length; i++) unsorted[i] = members[members.length - 1 - i];
+        for (uint256 i = 0; i < members.length; i++) {
+            unsorted[i] = members[members.length - 1 - i];
+        }
 
         vm.expectRevert(JailingPolicy.UnsortedMembers.selector);
         jailingPolicy.enforceJailFromMembers(hbKey, round, unsorted);
 
         // root mismatch
         address[] memory wrong = new address[](members.length);
-        for (uint256 i = 0; i < members.length; i++) wrong[i] = members[i];
+        for (uint256 i = 0; i < members.length; i++) {
+            wrong[i] = members[i];
+        }
         uint160 first = uint160(members[0]);
         address smaller = address(first > 1 ? first - 1 : 1);
         wrong[0] = smaller;
@@ -133,12 +155,12 @@ contract JailingPolicyTest is BlacklightFixture {
     }
 
     function test_enforceJail_individualWithProof() public {
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
 
         // only 1 vote => no quorum -> inconclusive after deadline
         _vote(hbKey, round, members, members[0], 1);
 
-        (, , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(hbKey, round);
+        (,,,,,,,,, uint64 deadline,,,,,,,,,) = manager.rounds(hbKey, round);
         vm.warp(uint256(deadline) + 1);
         manager.escalateOrExpire(hbKey, _defaultRawHTX(1));
 

@@ -6,12 +6,8 @@ pragma solidity ^0.8.22;
 
 interface IRewardPolicy {
     function spendableBudget() external view returns (uint256);
-    function accrueWeights(
-        bytes32 heartbeatKey,
-        uint8 round,
-        address[] calldata recipients,
-        uint256[] calldata weights
-    ) external;
+    function accrueWeights(bytes32 heartbeatKey, uint8 round, address[] calldata recipients, uint256[] calldata weights)
+        external;
     function claim() external;
 }
 
@@ -43,7 +39,11 @@ interface IProtocolConfig {
 }
 
 interface ISlashingPolicy {
-    enum Outcome { Inconclusive, ValidThreshold, InvalidThreshold }
+    enum Outcome {
+        Inconclusive,
+        ValidThreshold,
+        InvalidThreshold
+    }
 
     function onRoundFinalized(
         bytes32 heartbeatKey,
@@ -55,17 +55,22 @@ interface ISlashingPolicy {
 }
 
 interface ICommitteeSelector {
-    function selectCommittee(
-        bytes32 heartbeatKey,
-        uint8 round,
-        uint32 committeeSize,
-        uint64 snapshotId
-    ) external view returns (address[] memory members);
+    function selectCommittee(bytes32 heartbeatKey, uint8 round, uint32 committeeSize, uint64 snapshotId)
+        external
+        view
+        returns (address[] memory members);
 }
 
 interface IStakingOperators {
-    struct Tranche { uint256 amount; uint64 releaseTime; }
-    struct OperatorInfo { bool active; string metadataURI; }
+    struct Tranche {
+        uint256 amount;
+        uint64 releaseTime;
+    }
+
+    struct OperatorInfo {
+        bool active;
+        string metadataURI;
+    }
 
     function unstakeDelay() external view returns (uint256);
     function heartbeatManager() external view returns (address);
@@ -100,9 +105,5 @@ interface IStakingOperators {
 }
 
 interface IValidationRegistry {
-    function onHeartbeatFinalized(
-        bytes32 rawHTXHash,
-        uint8 response,
-        bytes32 heartbeatKey
-    ) external;
+    function onHeartbeatFinalized(bytes32 rawHTXHash, uint8 response, bytes32 heartbeatKey) external;
 }

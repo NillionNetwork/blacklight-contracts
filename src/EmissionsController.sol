@@ -158,14 +158,7 @@ contract EmissionsController is ReentrancyGuard, Ownable {
 
         if (amount != 0) {
             token.mint(address(this), amount);
-            bridge.depositERC20To{value: value}(
-                address(token),
-                l2Token,
-                l2Recipient,
-                amount,
-                l2GasLimit,
-                bridgeData
-            );
+            bridge.depositERC20To{value: value}(address(token), l2Token, l2Recipient, amount, l2GasLimit, bridgeData);
         }
 
         emit EpochMinted(epochId, amount, msg.sender, l2Recipient, bridgeData, block.timestamp);

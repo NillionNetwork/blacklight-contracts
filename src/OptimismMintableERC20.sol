@@ -22,13 +22,9 @@ contract OptimismMintableERC20 is ERC20, IOptimismMintableERC20 {
     error OnlyBridge();
     error ZeroAddress();
 
-    constructor(
-        address _l2Bridge,
-        address _l1Token,
-        string memory _name,
-        string memory _symbol,
-        uint8 decimals_
-    ) ERC20(_name, _symbol) {
+    constructor(address _l2Bridge, address _l1Token, string memory _name, string memory _symbol, uint8 decimals_)
+        ERC20(_name, _symbol)
+    {
         if (_l2Bridge == address(0) || _l1Token == address(0)) revert ZeroAddress();
         l2Bridge = _l2Bridge;
         l1Token = _l1Token;
@@ -53,9 +49,7 @@ contract OptimismMintableERC20 is ERC20, IOptimismMintableERC20 {
     }
 
     function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
-        return
-            interfaceId == type(IERC165).interfaceId ||
-            interfaceId == type(IOptimismMintableERC20).interfaceId;
+        return interfaceId == type(IERC165).interfaceId || interfaceId == type(IOptimismMintableERC20).interfaceId;
     }
 
     function mint(address to, uint256 amount) external override onlyBridge {

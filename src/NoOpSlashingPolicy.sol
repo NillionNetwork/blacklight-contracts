@@ -7,11 +7,14 @@ import "./Interfaces.sol";
 contract NoOpSlashingPolicy is ISlashingPolicy {
     function onRoundFinalized(
         bytes32, /* heartbeatKey */
-        uint8,   /* round */
+        uint8, /* round */
         Outcome, /* outcome */
         bytes32, /* committeeRoot */
-        uint32   /* committeeSize */
-    ) external override {
+        uint32 /* committeeSize */
+    )
+        external
+        override
+    {
         // no-op
     }
 }

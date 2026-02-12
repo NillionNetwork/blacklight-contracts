@@ -79,10 +79,10 @@ contract DeployERC8004 is Script {
         console.log("Proxy:", address(identityProxy));
 
         // Upgrade to real implementation
-        HardhatMinimalUUPS(address(identityProxy)).upgradeToAndCall(
-            address(deployed.identityImpl),
-            abi.encodeCall(IdentityRegistryUpgradeable.initialize, ())
-        );
+        HardhatMinimalUUPS(address(identityProxy))
+            .upgradeToAndCall(
+                address(deployed.identityImpl), abi.encodeCall(IdentityRegistryUpgradeable.initialize, ())
+            );
 
         // Cast to final type
         deployed.identity = IdentityRegistryUpgradeable(address(identityProxy));
@@ -105,10 +105,11 @@ contract DeployERC8004 is Script {
         console.log("Proxy:", address(validationProxy));
 
         // Upgrade to real implementation
-        HardhatMinimalUUPS(address(validationProxy)).upgradeToAndCall(
-            address(deployed.validationImpl),
-            abi.encodeCall(ValidationRegistryUpgradeable.initialize, (address(deployed.identity)))
-        );
+        HardhatMinimalUUPS(address(validationProxy))
+            .upgradeToAndCall(
+                address(deployed.validationImpl),
+                abi.encodeCall(ValidationRegistryUpgradeable.initialize, (address(deployed.identity)))
+            );
 
         // Cast to final type
         deployed.validation = ValidationRegistryUpgradeable(address(validationProxy));
@@ -156,10 +157,11 @@ contract DeployERC8004 is Script {
             console.log("Proxy:", address(reputationProxy));
 
             // Upgrade to real implementation
-            HardhatMinimalUUPS(address(reputationProxy)).upgradeToAndCall(
-                address(deployed.reputationImpl),
-                abi.encodeCall(ReputationRegistryUpgradeable.initialize, (address(deployed.identity)))
-            );
+            HardhatMinimalUUPS(address(reputationProxy))
+                .upgradeToAndCall(
+                    address(deployed.reputationImpl),
+                    abi.encodeCall(ReputationRegistryUpgradeable.initialize, (address(deployed.identity)))
+                );
 
             // Cast to final type
             deployed.reputation = ReputationRegistryUpgradeable(address(reputationProxy));
@@ -205,7 +207,8 @@ contract DeployERC8004 is Script {
 
         if (reputationDeployed) {
             output = string.concat(output, "# ReputationRegistry\n");
-            output = string.concat(output, "REPUTATION_REGISTRY_IMPL=", vm.toString(address(deployed.reputationImpl)), "\n");
+            output =
+                string.concat(output, "REPUTATION_REGISTRY_IMPL=", vm.toString(address(deployed.reputationImpl)), "\n");
             output = string.concat(output, "REPUTATION_REGISTRY=", vm.toString(address(deployed.reputation)), "\n");
         }
 

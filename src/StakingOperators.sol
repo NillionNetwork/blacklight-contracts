@@ -37,9 +37,21 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     error TooManyActiveOperators();
     error InvalidProtocolConfig(address candidate);
 
-    struct StakeCheckpoint { uint64 fromBlock; uint224 stake; }
-    struct Unbonding { address staker; IStakingOperators.Tranche[] tranches; }
-    struct OperatorData { bool active; string metadataURI; bool exists; }
+    struct StakeCheckpoint {
+        uint64 fromBlock;
+        uint224 stake;
+    }
+
+    struct Unbonding {
+        address staker;
+        IStakingOperators.Tranche[] tranches;
+    }
+
+    struct OperatorData {
+        bool active;
+        string metadataURI;
+        bool exists;
+    }
 
     bytes32 public constant SLASHER_ROLE = keccak256("SLASHER_ROLE");
 
@@ -103,8 +115,13 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         emit MaxActiveOperatorsUpdated(0, DEFAULT_MAX_ACTIVE_OPERATORS);
     }
 
-    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) { _pause(); }
-    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) { _unpause(); }
+    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
+    }
 
     function setProtocolConfig(IProtocolConfig newConfig) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (address(newConfig) == address(0)) revert ZeroAddress();
@@ -138,7 +155,6 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         heartbeatManager = newHeartbeatManager;
     }
 
-
     function snapshot() external override returns (uint64 snapshotId) {
         if (msg.sender != snapshotter && msg.sender != heartbeatManager) revert NotSnapshotter();
         if (block.number <= 1) revert NotReady();
@@ -165,13 +181,33 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         return ckpts[low].stake;
     }
 
-    function stakingToken() external view override returns (address) { return address(_stakingToken); }
-    function stakeOf(address operator) external view override returns (uint256) { return _operatorStake[operator]; }
-    function totalStaked() external view override returns (uint256) { return _totalStaked; }
-    function isJailed(address operator) external view override returns (bool) { return block.timestamp < _jailedUntil[operator]; }
-    function getUnbondingTranches(address operator) external view returns (IStakingOperators.Tranche[] memory) { return _unbondings[operator].tranches; }
-    function unbondingStaker(address operator) external view returns (address) { return _unbondings[operator].staker; }
-    function isActiveOperator(address operator) public view override returns (bool) { return _computeIsActive(operator); }
+    function stakingToken() external view override returns (address) {
+        return address(_stakingToken);
+    }
+
+    function stakeOf(address operator) external view override returns (uint256) {
+        return _operatorStake[operator];
+    }
+
+    function totalStaked() external view override returns (uint256) {
+        return _totalStaked;
+    }
+
+    function isJailed(address operator) external view override returns (bool) {
+        return block.timestamp < _jailedUntil[operator];
+    }
+
+    function getUnbondingTranches(address operator) external view returns (IStakingOperators.Tranche[] memory) {
+        return _unbondings[operator].tranches;
+    }
+
+    function unbondingStaker(address operator) external view returns (address) {
+        return _unbondings[operator].staker;
+    }
+
+    function isActiveOperator(address operator) public view override returns (bool) {
+        return _computeIsActive(operator);
+    }
 
     function getOperatorInfo(address operator) external view override returns (OperatorInfo memory) {
         OperatorData storage data = _operators[operator];
@@ -253,11 +289,15 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
                 if (minStake != 0 && amount < minStake) revert InsufficientStakeForActivation();
             }
             address approved = approvedStaker[operator];
-            if (approved != address(0) && msg.sender != operator && msg.sender != approved) revert UnauthorizedStaker();
+            if (approved != address(0) && msg.sender != operator && msg.sender != approved) {
+                revert UnauthorizedStaker();
+            }
             operatorStaker[operator] = msg.sender;
             _unbondings[operator].staker = msg.sender;
             if (approved != address(0)) approvedStaker[operator] = address(0);
-        } else if (currentStaker != msg.sender) revert DifferentStaker();
+        } else if (currentStaker != msg.sender) {
+            revert DifferentStaker();
+        }
 
         _stakingToken.safeTransferFrom(msg.sender, address(this), amount);
         _operatorStake[operator] += amount;
@@ -308,8 +348,9 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
 
         for (uint256 i = 0; i < len; ++i) {
             IStakingOperators.Tranche memory t = u.tranches[i];
-            if (block.timestamp >= t.releaseTime) payout += t.amount;
-            else {
+            if (block.timestamp >= t.releaseTime) {
+                payout += t.amount;
+            } else {
                 u.tranches[writeIndex] = t;
                 ++writeIndex;
             }
@@ -333,7 +374,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     function registerOperator(string calldata metadataURI) external override whenNotPaused {
         if (!_hasMinStake(msg.sender)) revert InsufficientStakeForActivation();
         OperatorData storage data = _operators[msg.sender];
-        if (!data.exists) { data.exists = true; }
+        if (!data.exists) data.exists = true;
         data.active = true;
         data.metadataURI = metadataURI;
 
@@ -430,7 +471,8 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
 
         if (len != 0) {
             IStakingOperators.Tranche storage last = u.tranches[len - 1];
-            if (last.releaseTime == releaseTime) { last.amount += amount; return; }
+            if (last.releaseTime == releaseTime) last.amount += amount;
+            return;
         }
 
         if (len >= MAX_TRANCHES_PER_OPERATOR) revert TooManyTranches();
@@ -454,7 +496,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
 
     function _isProtocolConfig(address candidate) internal view returns (bool) {
         if (candidate.code.length == 0) return false;
-        (bool ok, ) = candidate.staticcall(abi.encodeWithSelector(IProtocolConfig.quorumBps.selector));
+        (bool ok,) = candidate.staticcall(abi.encodeWithSelector(IProtocolConfig.quorumBps.selector));
         return ok;
     }
 }

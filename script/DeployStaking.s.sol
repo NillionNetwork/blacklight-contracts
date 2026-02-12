@@ -21,11 +21,7 @@ contract DeployStaking is Script {
         TESTToken test = new TESTToken(deployer);
         console2.log("TEST token deployed at:", address(test));
 
-        StakingOperators staking = new StakingOperators(
-            test,
-            deployer,
-            7 days
-        );
+        StakingOperators staking = new StakingOperators(test, deployer, 7 days);
         console2.log("StakingOperators deployed at:", address(staking));
 
         uint256 initialMint = 1_000_000e6;

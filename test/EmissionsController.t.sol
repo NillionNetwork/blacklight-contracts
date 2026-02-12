@@ -31,9 +31,9 @@ contract EmissionsControllerTest is Test {
             l2Token,
             l2Recipient,
             block.timestamp + 5,
-            10,        // epochDuration
-            200_000,   // l2GasLimit
-            300,       // global cap
+            10, // epochDuration
+            200_000, // l2GasLimit
+            300, // global cap
             schedule,
             owner
         );
@@ -104,7 +104,9 @@ contract EmissionsControllerTest is Test {
 
         vm.warp(block.timestamp + 10);
         // remaining cap is 100, but epoch wants 150
-        vm.expectRevert(abi.encodeWithSelector(EmissionsController.GlobalCapExceeded.selector, uint256(150), uint256(100)));
+        vm.expectRevert(
+            abi.encodeWithSelector(EmissionsController.GlobalCapExceeded.selector, uint256(150), uint256(100))
+        );
         c2.mintAndBridgeNextEpoch();
     }
 

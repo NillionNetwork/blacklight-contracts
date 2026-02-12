@@ -10,43 +10,13 @@ contract DummyModule {}
 contract ProtocolConfigTest is Test {
     function test_constructor_revertsOnZeroModules() public {
         vm.expectRevert(ProtocolConfig.ZeroAddress.selector);
-        new ProtocolConfig(
-            address(this),
-            address(0),
-            address(1),
-            address(2),
-            address(3),
-            1,
-            0,
-            1,
-            0,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1
-        );
+        new ProtocolConfig(address(this), address(0), address(1), address(2), address(3), 1, 0, 1, 0, 1, 1, 1, 1, 1, 1);
     }
 
     function test_constructor_revertsOnInvalidBps() public {
         vm.expectRevert(abi.encodeWithSelector(ProtocolConfig.InvalidBps.selector, uint256(10001)));
         new ProtocolConfig(
-            address(this),
-            address(this),
-            address(this),
-            address(this),
-            address(this),
-            1,
-            0,
-            1,
-            0,
-            10001,
-            1,
-            1,
-            1,
-            1,
-            1
+            address(this), address(this), address(this), address(this), address(this), 1, 0, 1, 0, 10001, 1, 1, 1, 1, 1
         );
     }
 
@@ -98,7 +68,9 @@ contract ProtocolConfigTest is Test {
         DummyModule notOwnerModule4 = new DummyModule();
         vm.prank(address(0xBEEF));
         vm.expectRevert();
-        cfg.setModules(address(notOwnerModule1), address(notOwnerModule2), address(notOwnerModule3), address(notOwnerModule4));
+        cfg.setModules(
+            address(notOwnerModule1), address(notOwnerModule2), address(notOwnerModule3), address(notOwnerModule4)
+        );
 
         DummyModule module1 = new DummyModule();
         DummyModule module2 = new DummyModule();
@@ -195,8 +167,6 @@ contract ProtocolConfigTest is Test {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nonOwner));
         cfg.setParams(3, 0, 5, 1, 5000, 5000, 10, 10, 100, 1);
     }
-
-
 
     function test_setNodeVersion_onlyOwner() public {
         ProtocolConfig cfg = new ProtocolConfig(
