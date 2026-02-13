@@ -471,8 +471,10 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
 
         if (len != 0) {
             IStakingOperators.Tranche storage last = u.tranches[len - 1];
-            if (last.releaseTime == releaseTime) last.amount += amount;
-            return;
+            if (last.releaseTime == releaseTime) {
+                last.amount += amount;
+                return;
+            }
         }
 
         if (len >= MAX_TRANCHES_PER_OPERATOR) revert TooManyTranches();

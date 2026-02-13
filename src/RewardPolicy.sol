@@ -171,11 +171,15 @@ contract RewardPolicy is IRewardPolicy, Ownable, ReentrancyGuard {
     function _updateUnlock() internal {
         uint64 nowTs = uint64(block.timestamp);
         uint64 last = lastUpdate;
-        if (last == 0) lastUpdate = nowTs;
-        return;
+        if (last == 0) {
+            lastUpdate = nowTs;
+            return;
+        }
         if (nowTs <= last) return;
-        if (streamRemaining == 0) lastUpdate = nowTs;
-        return;
+        if (streamRemaining == 0) {
+            lastUpdate = nowTs;
+            return;
+        }
 
         uint256 elapsed = uint256(nowTs - last);
         if (streamRatePerSecondWad != 0) {
