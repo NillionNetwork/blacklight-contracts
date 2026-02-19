@@ -58,6 +58,14 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         assertEq(factory.allNodes()[0], nodeA);
     }
 
+    function test_addNode_defaultsToRestakeWhenTokensMatch() public {
+        factory.setRewardToken(address(stakeToken));
+        address opAddr = factory.addNode(nodeA);
+
+        NodeOperator op = NodeOperator(opAddr);
+        assertEq(uint256(op.rewardBehavior()), uint256(uint8(NodeOperator.RewardBehavior.AutoRestake)));
+    }
+
     function test_addNode_revertsForNonOwner() public {
         vm.prank(address(0xDEAD));
         vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", address(0xDEAD)));
@@ -301,7 +309,7 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         assertEq(stakeToken.balanceOf(userA), 1_000_000e6);
     }
 
-    function test_withdrawUnstaked_resetsOperatorBehaviorToWithdraw() public {
+    function test_withdrawUnstaked_resetsOperatorBehaviorToDefault() public {
         factory.setRewardToken(address(stakeToken));
         address opAddr = factory.addNode(nodeA);
 
@@ -327,7 +335,7 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         factory.withdrawUnstaked();
 
         assertEq(
-            uint256(NodeOperator(opAddr).rewardBehavior()), uint256(uint8(NodeOperator.RewardBehavior.WithdrawToUser))
+            uint256(NodeOperator(opAddr).rewardBehavior()), uint256(uint8(NodeOperator.RewardBehavior.AutoRestake))
         );
     }
 

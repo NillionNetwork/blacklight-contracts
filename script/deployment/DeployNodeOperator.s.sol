@@ -13,7 +13,6 @@ import "../../src/NodeOperator.sol";
 ///      - STAKE_TOKEN: Staking token address (required)
 ///      - REWARD_TOKEN: Reward token address (required)
 ///      - NODE_ADDRESS: Node/operator address managed by this instance (required)
-///      - ROUTER_FACTORY: Factory/router address allowed to call user operations (required)
 ///      - WITHDRAW_FEE_BPS: Withdraw-mode fee in basis points (default: 3000 = 30%)
 ///      - RESTAKE_FEE_BPS: Restake-mode fee in basis points (default: 1500 = 15%)
 ///      - MIN_STAKE: Minimum first-stake amount (default: 1_000_000e6 = 1M NIL)
@@ -27,7 +26,6 @@ contract DeployNodeOperator is Script {
         address stakeToken = vm.envAddress("STAKE_TOKEN");
         address rewardTokenAddr = vm.envAddress("REWARD_TOKEN");
         address nodeAddress = vm.envAddress("NODE_ADDRESS");
-        address routerFactory = vm.envAddress("ROUTER_FACTORY");
         uint256 withdrawFeeBpsVal = vm.envOr("WITHDRAW_FEE_BPS", uint256(3000));
         uint256 restakeFeeBpsVal = vm.envOr("RESTAKE_FEE_BPS", uint256(1500));
         uint256 minStakeVal = vm.envOr("MIN_STAKE", uint256(1_000_000e6));
@@ -37,7 +35,6 @@ contract DeployNodeOperator is Script {
         nodeOperator = new NodeOperator(
             deployer,
             minStakeVal,
-            routerFactory,
             nodeAddress,
             stakingOperators,
             rewardPolicyAddr,

@@ -3,13 +3,14 @@ pragma solidity ^0.8.22;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./NodeOperator.sol";
 import "./Interfaces.sol";
 
 /// @title NodeOperatorFactory
 /// @notice Node registry that auto-deploys NodeOperator instances and auto-binds
 ///         users to free nodes on their first stake. Users approve only this contract.
-contract NodeOperatorFactory is Ownable {
+contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ──────────────────────────────────────────────
@@ -36,6 +37,7 @@ contract NodeOperatorFactory is Ownable {
     event UserBoundToNodeOperator(address indexed user, address indexed nodeOperator);
     event UserUnboundFromNodeOperator(address indexed user, address indexed nodeOperator);
     event FeesWithdrawn(uint256 amount, address indexed to);
+    event MinStakeUpdated(uint256 oldMinStake, uint256 newMinStake);
 
     // ──────────────────────────────────────────────
     // Shared configuration
@@ -48,6 +50,7 @@ contract NodeOperatorFactory is Ownable {
     uint256 public defaultWithdrawFeeBps = 3000;
     uint256 public defaultRestakeFeeBps = 1500;
     uint256 public minStake;
+    uint256 public constant MAX_FEE_BPS = 10000; // hard cap: 100%
 
     // ──────────────────────────────────────────────
     // Registry state
@@ -97,7 +100,7 @@ contract NodeOperatorFactory is Ownable {
     }
 
     function setDefaultModeFeeBps(uint256 withdrawBps, uint256 restakeBps) external onlyOwner {
-        if (withdrawBps > 10000 || restakeBps > 10000) revert FeeTooHigh();
+        if (withdrawBps > MAX_FEE_BPS || restakeBps > MAX_FEE_BPS) revert FeeTooHigh();
         defaultWithdrawFeeBps = withdrawBps;
         defaultRestakeFeeBps = restakeBps;
     }
@@ -109,7 +112,36 @@ contract NodeOperatorFactory is Ownable {
     }
 
     function setMinStake(uint256 newMinStake) external onlyOwner {
+        emit MinStakeUpdated(minStake, newMinStake);
         minStake = newMinStake;
+    }
+
+    /// @notice Pushes the factory's current token/operator addresses to a single NodeOperator.
+    ///         Use after updating factory config to keep an existing operator in sync.
+    function syncOperatorConfig(address operatorAddr) external onlyOwner {
+        if (operatorAddr == address(0)) revert ZeroAddress();
+        if (operatorToNode[operatorAddr] == address(0)) revert InvalidNodeOperator();
+        _syncOperatorConfig(operatorAddr);
+    }
+
+    /// @notice Pushes the factory's current config to every registered NodeOperator.
+    function syncAllOperatorConfigs() external onlyOwner {
+        uint256 len = _allOperators.length;
+        for (uint256 i; i < len;) {
+            _syncOperatorConfig(_allOperators[i]);
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function _syncOperatorConfig(address operatorAddr) internal {
+        NodeOperator op = NodeOperator(operatorAddr);
+        if (stakingOperators != address(0)) op.setStakingOperators(stakingOperators);
+        if (rewardPolicy != address(0)) op.setRewardPolicy(rewardPolicy);
+        if (stakingToken != address(0)) op.setStakingToken(stakingToken);
+        if (rewardToken != address(0)) op.setRewardToken(rewardToken);
+        op.setMinStake(minStake);
     }
 
     function withdrawFees(uint256 amount, address to) external onlyOwner {
@@ -128,11 +160,13 @@ contract NodeOperatorFactory is Ownable {
     function _addNode(address node) internal returns (address operatorAddr) {
         if (node == address(0)) revert ZeroAddress();
         if (_nodeIndexPlusOne[node] != 0) revert NodeAlreadyRegistered();
-        if (stakingOperators == address(0) || stakingToken == address(0)) revert FactoryNotConfigured();
+        if (
+            stakingOperators == address(0) || stakingToken == address(0) || rewardPolicy == address(0)
+                || rewardToken == address(0)
+        ) revert FactoryNotConfigured();
 
-        NodeOperator operator = new NodeOperator(
-            address(this), minStake, address(this), node, stakingOperators, rewardPolicy, stakingToken, rewardToken
-        );
+        NodeOperator operator =
+            new NodeOperator(address(this), minStake, node, stakingOperators, rewardPolicy, stakingToken, rewardToken);
         operator.setModeFeeBps(defaultWithdrawFeeBps, defaultRestakeFeeBps);
 
         operatorAddr = address(operator);
@@ -155,7 +189,9 @@ contract NodeOperatorFactory is Ownable {
         uint256 len = nodes.length;
         for (uint256 i; i < len;) {
             _addNode(nodes[i]);
-            unchecked { ++i; }
+            unchecked {
+                ++i;
+            }
         }
     }
 
@@ -192,7 +228,7 @@ contract NodeOperatorFactory is Ownable {
     // User operations (auto-binding + token relay)
     // ──────────────────────────────────────────────
 
-    function stake(uint256 amount) external {
+    function stake(uint256 amount) external nonReentrant {
         address operatorAddr = userToOperator[msg.sender];
         if (operatorAddr == address(0)) {
             operatorAddr = _bindFreeNode(msg.sender);
@@ -201,39 +237,32 @@ contract NodeOperatorFactory is Ownable {
         INodeOperator(operatorAddr).assignUser(msg.sender);
         // Relay tokens: user → NodeOperator (skip Factory hop)
         IERC20(stakingToken).safeTransferFrom(msg.sender, operatorAddr, amount);
-        INodeOperator(operatorAddr).stake(amount);
+        INodeOperator(operatorAddr).stake();
     }
 
-    function requestUnstake(uint256 amount) external {
+    function requestUnstake(uint256 amount) external nonReentrant {
         address operatorAddr = userToOperator[msg.sender];
         if (operatorAddr == address(0)) revert NoBoundNodeOperator();
         INodeOperator(operatorAddr).requestUnstake(amount);
     }
 
-    function withdrawUnstaked() external {
+    function withdrawUnstaked() external nonReentrant {
         address operatorAddr = userToOperator[msg.sender];
         if (operatorAddr == address(0)) revert NoBoundNodeOperator();
         INodeOperator(operatorAddr).withdrawUnstaked();
 
         if (INodeOperator(operatorAddr).nodeUser() == address(0)) {
-            INodeOperator(operatorAddr).resetRewardBehavior();
-            address node = userToNode[msg.sender];
-            _freeNodes.push(node);
-            _freeNodeIndexPlusOne[node] = _freeNodes.length;
-            delete nodeToUser[node];
-            delete userToNode[msg.sender];
-            delete userToOperator[msg.sender];
-            emit UserUnboundFromNodeOperator(msg.sender, operatorAddr);
+            _cleanupUserBinding(msg.sender, operatorAddr);
         }
     }
 
-    function claimRewards() external {
+    function claimRewards() external nonReentrant {
         address operatorAddr = userToOperator[msg.sender];
         if (operatorAddr == address(0)) revert NoBoundNodeOperator();
         INodeOperator(operatorAddr).harvestRewards();
     }
 
-    function setMyRewardBehavior(uint8 behavior) external {
+    function setMyRewardBehavior(uint8 behavior) external nonReentrant {
         address operatorAddr = userToOperator[msg.sender];
         if (operatorAddr == address(0)) revert NoBoundNodeOperator();
         INodeOperator(operatorAddr).setRewardBehavior(behavior);
@@ -241,27 +270,63 @@ contract NodeOperatorFactory is Ownable {
 
     function pendingRewards(address user) external view returns (uint256) {
         address operatorAddr = userToOperator[user];
-        if (operatorAddr == address(0)) revert NoBoundNodeOperator();
+        if (operatorAddr == address(0)) return 0;
         if (rewardPolicy == address(0)) return 0;
         if (INodeOperator(operatorAddr).nodeUser() != user) return 0;
         return IRewardPolicyExtended(rewardPolicy).rewards(operatorAddr);
     }
 
     /// @notice Intentionally permissionless so keepers/bots can trigger harvesting.
-    function harvestRewards(address operatorAddr) external {
+    function harvestRewards(address operatorAddr) external nonReentrant {
         if (operatorAddr == address(0)) revert ZeroAddress();
         if (operatorToNode[operatorAddr] == address(0)) revert InvalidNodeOperator();
         INodeOperator(operatorAddr).harvestRewards();
     }
 
     /// @notice Intentionally permissionless so keepers/bots can trigger batch harvesting.
+    ///         Harvests all assigned nodes in a single transaction. For large registries,
+    ///         prefer the paginated overload to avoid block gas limit issues-
     function harvestAllRewards() external {
-        uint256 len = _allNodes.length;
-        for (uint256 i; i < len;) {
+        harvestAllRewards(0, _allNodes.length);
+    }
+
+    /// @notice Paginated variant of harvestAllRewards. Process `limit` nodes starting
+    ///         at `offset` to stay within block gas limits with large node counts.
+    /// @dev Individual harvest failures are swallowed so a single broken operator
+    ///      cannot revert the entire batch.
+    function harvestAllRewards(uint256 offset, uint256 limit) public nonReentrant {
+        uint256 total = _allNodes.length;
+        uint256 end = offset + limit;
+        if (end > total) end = total;
+        for (uint256 i = offset; i < end;) {
             if (_freeNodeIndexPlusOne[_allNodes[i]] == 0) {
-                INodeOperator(_allOperators[i]).harvestRewards();
+                // solhint-disable-next-line no-empty-blocks
+                try INodeOperator(_allOperators[i]).harvestRewards() {} catch {}
             }
-            unchecked { ++i; }
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // Admin: force-release abandoned users after unstake matures
+    // ──────────────────────────────────────────────
+
+    /// @notice Admin withdraws matured tranches and frees the node if fully drained.
+    /// This is to prevent nodes with no stake from being stuck in the system.
+    /// This function is only meant to be used in emergency situations.
+    function forceWithdrawAndRelease(address operatorAddr) external onlyOwner {
+        if (operatorToNode[operatorAddr] == address(0)) revert InvalidNodeOperator();
+        address user = INodeOperator(operatorAddr).nodeUser();
+        if (user == address(0)) revert NoBoundNodeOperator();
+        // Harvest any pending rewards first
+        // solhint-disable-next-line no-empty-blocks
+        INodeOperator(operatorAddr).setRewardBehavior(uint8(NodeOperator.RewardBehavior.WithdrawToUser));
+        try INodeOperator(operatorAddr).harvestRewards() {} catch {}
+        INodeOperator(operatorAddr).withdrawUnstaked();
+        if (INodeOperator(operatorAddr).nodeUser() == address(0)) {
+            _cleanupUserBinding(user, operatorAddr);
         }
     }
 
@@ -311,6 +376,17 @@ contract NodeOperatorFactory is Ownable {
     // ──────────────────────────────────────────────
     // Internal
     // ──────────────────────────────────────────────
+
+    function _cleanupUserBinding(address user, address operatorAddr) internal {
+        INodeOperator(operatorAddr).resetRewardBehavior();
+        address node = userToNode[user];
+        _freeNodes.push(node);
+        _freeNodeIndexPlusOne[node] = _freeNodes.length;
+        delete nodeToUser[node];
+        delete userToNode[user];
+        delete userToOperator[user];
+        emit UserUnboundFromNodeOperator(user, operatorAddr);
+    }
 
     function _bindFreeNode(address user) internal returns (address operatorAddr) {
         if (_freeNodes.length == 0) revert NoFreeNodeOperator();

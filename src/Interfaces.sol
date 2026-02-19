@@ -120,7 +120,7 @@ interface INodeOperator {
     function assignUser(address user) external;
     function harvestRewards() external;
 
-    function stake(uint256 amount) external;
+    function stake() external;
     function requestUnstake(uint256 amount) external;
     function withdrawUnstaked() external;
     function nodeAddress() external view returns (address);
