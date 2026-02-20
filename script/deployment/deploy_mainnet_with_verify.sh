@@ -1,11 +1,66 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_DIR="${LOG_DIR:-$ROOT_DIR/target/deploy-mainnet}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=script/deployment/shlib/common.sh
+source "$SCRIPT_DIR/shlib/common.sh"
+REPO_ROOT="$(repo_root_from_script "${BASH_SOURCE[0]}")"
+LOG_DIR="${LOG_DIR:-$REPO_ROOT/target/deploy-mainnet}"
 STATE_FILE="${STATE_FILE:-$LOG_DIR/addresses.env}"
 
 mkdir -p "$LOG_DIR"
+
+PROFILE=""
+PROFILE_JSON=""
+OVERRIDES=()
+DRY_RUN="0"
+RESUME="1"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --profile)
+      PROFILE="$2"
+      shift 2
+      ;;
+    --profile-json)
+      PROFILE_JSON="$2"
+      shift 2
+      ;;
+    --set)
+      OVERRIDES+=("$2")
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN="1"
+      shift
+      ;;
+    --resume)
+      RESUME="1"
+      shift
+      ;;
+    --no-resume)
+      RESUME="0"
+      shift
+      ;;
+    -h|--help)
+      cat <<'USAGE'
+Usage: ./script/deployment/deploy_mainnet_with_verify.sh [--profile FILE] [--profile-json FILE] [--set KEY=VALUE] [--dry-run]
+Chain ID guards: set EXPECTED_L1_CHAIN_ID and EXPECTED_L2_CHAIN_ID in your profile or via --set.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+load_profile_if_present "$PROFILE"
+load_json_profile_if_present "$PROFILE_JSON"
+if [[ ${#OVERRIDES[@]} -gt 0 ]]; then
+  apply_overrides "${OVERRIDES[@]}"
+fi
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -24,6 +79,7 @@ require_env() {
 require_cmd forge
 require_cmd cast
 require_cmd python3
+assert_toolchain
 
 require_env CONFIRM_MAINNET
 require_env PRIVATE_KEY
@@ -63,6 +119,13 @@ if [[ "${LOAD_STATE:-0}" == "1" && -f "$STATE_FILE" ]]; then
   set +a
 fi
 
+if [[ "$RESUME" == "1" && -f "$STATE_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$STATE_FILE"
+  set +a
+fi
+
 L2_BRIDGE="${L2_BRIDGE:-0x4200000000000000000000000000000000000010}"
 L2_CHAIN_ID="${L2_CHAIN_ID:-98875}"
 L2_VERIFIER_URL="${L2_VERIFIER_URL:-https://explorer-blacklight-x9da3b5afc.t.conduit.xyz/api/}"
@@ -71,7 +134,7 @@ L1_CHAIN="${L1_CHAIN:-mainnet}"
 L1_VERIFIER="${L1_VERIFIER:-etherscan}"
 L1_VERIFIER_URL="${L1_VERIFIER_URL:-}"
 SOLC_VERSION="${SOLC_VERSION:-0.8.26}"
-SOLC_PATH="${SOLC_PATH:-$ROOT_DIR/contracts/tools/solc-$SOLC_VERSION}"
+SOLC_PATH="${SOLC_PATH:-$REPO_ROOT/tools/solc-$SOLC_VERSION}"
 ETHERSCAN_API_VERSION="${ETHERSCAN_API_VERSION:-v2}"
 ETHERSCAN_VERIFIER_URL="${ETHERSCAN_VERIFIER_URL:-https://api.etherscan.io/v2/api}"
 
@@ -150,6 +213,27 @@ GOVERNANCE="${GOVERNANCE:-$DEPLOYER}"
 ADMIN="${ADMIN:-$DEPLOYER}"
 MINT_RECIPIENT="${MINT_RECIPIENT:-$GOVERNANCE}"
 
+BROADCAST_ARGS=(--broadcast)
+if [[ "$DRY_RUN" == "1" ]]; then
+  BROADCAST_ARGS=()
+  SKIP_VERIFY=1
+  SKIP_SET_MINTER=1
+  STATE_FILE="${STATE_FILE%.env}.dry-run.env"
+fi
+
+assert_chain_id "$L1_RPC_URL" "${EXPECTED_L1_CHAIN_ID:-}"
+assert_chain_id "$L2_RPC_URL" "${EXPECTED_L2_CHAIN_ID:-}"
+
+if ! address_has_code "$L1_RPC_URL" "$L1_BRIDGE"; then
+  echo "L1_BRIDGE has no bytecode at $L1_BRIDGE" >&2
+  exit 1
+fi
+
+if ! address_has_code "$L1_RPC_URL" "$L1_NIL_ADDRESS"; then
+  echo "L1_NIL_ADDRESS has no bytecode at $L1_NIL_ADDRESS" >&2
+  exit 1
+fi
+
 extract_deployed_address() {
   local log="$1"
   local line
@@ -191,11 +275,11 @@ if [[ -z "${L2_NIL_ADDRESS:-}" && "${SKIP_DEPLOY_L2_NIL:-0}" != "1" ]]; then
   echo "Deploying L2 NIL token (OptimismMintableERC20)..."
   L2_TOKEN_LOG="$LOG_DIR/l2_nil.log"
   (
-    cd "$ROOT_DIR/contracts"
+    cd "$REPO_ROOT"
     forge create src/OptimismMintableERC20.sol:OptimismMintableERC20 \
       --rpc-url "$L2_RPC_URL" \
       --private-key "$PRIVATE_KEY" \
-      --broadcast \
+      "${BROADCAST_ARGS[@]+"${BROADCAST_ARGS[@]}"}" \
       --constructor-args "$L2_BRIDGE" "$L1_NIL_ADDRESS" "$TOKEN_NAME" "$TOKEN_SYMBOL" "$TOKEN_DECIMALS" 2>&1 | tee "$L2_TOKEN_LOG"
   ) >/dev/null
   L2_NIL_ADDRESS="$(extract_deployed_address "$L2_TOKEN_LOG")"
@@ -208,7 +292,7 @@ if [[ "${SKIP_DEPLOY_L2_SUITE:-0}" != "1" ]]; then
   echo "Deploying L2 contract suite..."
   L2_SUITE_LOG="$LOG_DIR/l2_suite.log"
   (
-    cd "$ROOT_DIR/contracts"
+    cd "$REPO_ROOT"
     USE_MOCK_TOKENS=false \
       STAKE_TOKEN="$L2_NIL_ADDRESS" \
       REWARD_TOKEN="$L2_NIL_ADDRESS" \
@@ -234,8 +318,8 @@ if [[ "${SKIP_DEPLOY_L2_SUITE:-0}" != "1" ]]; then
       HEARTBEAT_SUBMITTERS="${HEARTBEAT_SUBMITTERS:-}" \
       REWARD_EPOCH_DURATION="$REWARD_EPOCH_DURATION" \
       REWARD_MAX_PAYOUT_PER_FINALIZE="$REWARD_MAX_PAYOUT_PER_FINALIZE" \
-      forge script script/DeployTestRCSystem.s.sol:DeployTestRCSystem \
-      --rpc-url "$L2_RPC_URL" --broadcast 2>&1 | tee "$L2_SUITE_LOG"
+      forge script script/deployment/DeployTestRCSystem.s.sol:DeployTestRCSystem \
+      --rpc-url "$L2_RPC_URL" "${BROADCAST_ARGS[@]+"${BROADCAST_ARGS[@]}"}" 2>&1 | tee "$L2_SUITE_LOG"
   ) >/dev/null
 
   STAKING_ADDRESS="$(extract_label_address "StakingOperators" "$L2_SUITE_LOG")"
@@ -264,11 +348,15 @@ else
   echo "Using existing L2 suite addresses."
 fi
 
+assert_contract_interface "$L2_RPC_URL" "$STAKING_ADDRESS" "stakingToken()(address)"
+assert_contract_interface "$L2_RPC_URL" "$MANAGER_ADDRESS" "nodeCount()(uint256)"
+assert_contract_interface "$L2_RPC_URL" "$REWARD_ADDRESS" "spendableBudget()(uint256)"
+
 if [[ "${SKIP_DEPLOY_L1_EMISSIONS:-0}" != "1" ]]; then
   echo "Deploying EmissionsController on L1..."
   L1_EMISSIONS_LOG="$LOG_DIR/l1_emissions.log"
   (
-    cd "$ROOT_DIR/contracts"
+    cd "$REPO_ROOT"
     PRIVATE_KEY="$PRIVATE_KEY" \
       TOKEN="$L1_NIL_ADDRESS" \
       L1_BRIDGE="$L1_BRIDGE" \
@@ -279,8 +367,8 @@ if [[ "${SKIP_DEPLOY_L1_EMISSIONS:-0}" != "1" ]]; then
       L2_GAS_LIMIT="$L2_GAS_LIMIT" \
       GLOBAL_MINT_CAP="$GLOBAL_MINT_CAP" \
       EMISSIONS_SCHEDULE="$EMISSIONS_SCHEDULE" \
-      forge script script/DeployEmissionsController.s.sol:DeployEmissionsController \
-      --rpc-url "$L1_RPC_URL" --broadcast 2>&1 | tee "$L1_EMISSIONS_LOG"
+      forge script script/deployment/DeployEmissionsController.s.sol:DeployEmissionsController \
+      --rpc-url "$L1_RPC_URL" "${BROADCAST_ARGS[@]+"${BROADCAST_ARGS[@]}"}" 2>&1 | tee "$L1_EMISSIONS_LOG"
   ) >/dev/null
   L1_EMISSIONS_ADDRESS="$(extract_label_address "EmissionsController" "$L1_EMISSIONS_LOG")"
   echo "EmissionsController: $L1_EMISSIONS_ADDRESS"
@@ -305,7 +393,7 @@ if [[ "${SKIP_VERIFY:-0}" != "1" ]]; then
   ensure_solc
   echo "Verifying L2 NIL (blockscout)..."
 (
-  cd "$ROOT_DIR/contracts"
+  cd "$REPO_ROOT"
   FOUNDRY_DISABLE_SOLC_DOWNLOAD=1 FOUNDRY_SOLC_VERSION="$SOLC_VERSION" FOUNDRY_SOLC_PATH="$SOLC_PATH" forge verify-contract \
     --rpc-url "$L2_RPC_URL" \
     --chain "$L2_CHAIN_ID" \
@@ -320,7 +408,7 @@ if [[ "${SKIP_VERIFY:-0}" != "1" ]]; then
 
   echo "Verifying L2 suite (blockscout)..."
 (
-  cd "$ROOT_DIR/contracts"
+  cd "$REPO_ROOT"
   FOUNDRY_DISABLE_SOLC_DOWNLOAD=1 FOUNDRY_SOLC_VERSION="$SOLC_VERSION" FOUNDRY_SOLC_PATH="$SOLC_PATH" forge verify-contract \
     --rpc-url "$L2_RPC_URL" \
     --chain "$L2_CHAIN_ID" \
@@ -416,7 +504,7 @@ if [[ "${SKIP_VERIFY:-0}" != "1" ]]; then
   if [[ "$L1_VERIFIER" == "etherscan" ]]; then
     require_env ETHERSCAN_API_KEY
     (
-      cd "$ROOT_DIR/contracts"
+      cd "$REPO_ROOT"
       FOUNDRY_DISABLE_SOLC_DOWNLOAD=1 FOUNDRY_SOLC_VERSION="$SOLC_VERSION" FOUNDRY_SOLC_PATH="$SOLC_PATH" ETHERSCAN_API_VERSION="$ETHERSCAN_API_VERSION" forge verify-contract \
         --rpc-url "$L1_RPC_URL" \
         --chain "$L1_CHAIN" \
@@ -455,7 +543,7 @@ if [[ "${SKIP_VERIFY:-0}" != "1" ]]; then
   else
     require_env L1_VERIFIER_URL
     (
-      cd "$ROOT_DIR/contracts"
+      cd "$REPO_ROOT"
       FOUNDRY_DISABLE_SOLC_DOWNLOAD=1 FOUNDRY_SOLC_VERSION="$SOLC_VERSION" FOUNDRY_SOLC_PATH="$SOLC_PATH" forge verify-contract \
         --rpc-url "$L1_RPC_URL" \
         --chain "$L1_CHAIN" \
@@ -520,3 +608,10 @@ SLASHING_ADDRESS=$SLASHING_ADDRESS
 JAIL_ADDRESS=${JAIL_ADDRESS:-}
 L1_EMISSIONS_ADDRESS=$L1_EMISSIONS_ADDRESS
 EOF
+
+write_env_json_artifact \
+  "$STATE_FILE" \
+  "$LOG_DIR/addresses.json" \
+  "mainnet-suite" \
+  "$L2_CHAIN_ID" \
+  "$([[ "$DRY_RUN" == "1" ]] && echo "dry-run" || echo "broadcast")"

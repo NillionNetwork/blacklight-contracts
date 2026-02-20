@@ -4,7 +4,7 @@ pragma solidity ^0.8.22;
 import "forge-std/Script.sol";
 import "forge-std/console2.sol";
 
-import "../src/EmissionsController.sol";
+import "../../src/EmissionsController.sol";
 
 /// @notice Deploys EmissionsController with a provided emissions schedule and bridge settings.
 /// @dev Configure via env vars when running `forge script`:

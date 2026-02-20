@@ -117,7 +117,10 @@ contract StakingHandler is Test {
 
         bool ready;
         for (uint256 i = 0; i < tr.length; i++) {
-            if (block.timestamp >= tr[i].releaseTime) { ready = true; break; }
+            if (block.timestamp >= tr[i].releaseTime) {
+                ready = true;
+                break;
+            }
         }
         if (!ready) return;
 

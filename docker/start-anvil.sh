@@ -54,7 +54,7 @@ EXTRA_ARGS=()
 
 # Help function
 show_help() {
-  head -n 35 "$0" | tail -n +2 | sed 's/^# //' | sed 's/^#//'
+  head -n 32 "$0" | tail -n +2 | sed 's/^# //' | sed 's/^#//'
   exit 0
 }
 
@@ -120,6 +120,12 @@ done
 
 RPC_URL="http://127.0.0.1:${ANVIL_PORT}"
 
+# Basic validation for account count.
+if ! [[ "$NUM_ACCOUNTS" =~ ^[0-9]+$ ]]; then
+  echo -e "${RED}Error:${NC} --accounts must be a non-negative integer"
+  exit 1
+fi
+
 # Start anvil in background
 if [ ${#EXTRA_ARGS[@]} -gt 0 ]; then
   anvil \
@@ -129,6 +135,7 @@ if [ ${#EXTRA_ARGS[@]} -gt 0 ]; then
     --mnemonic "$MNEMONIC" \
     --block-time "$BLOCK_TIME" \
     --accounts "$NUM_ACCOUNTS" \
+    --silent \
     "${EXTRA_ARGS[@]}" &
 else
   anvil \
@@ -137,6 +144,7 @@ else
     --chain-id "$CHAIN_ID" \
     --mnemonic "$MNEMONIC" \
     --block-time "$BLOCK_TIME" \
+    --silent \
     --accounts "$NUM_ACCOUNTS" &
 fi
 ANVIL_PID=$!
@@ -162,14 +170,16 @@ DEPLOYER_ADDRESS=$(cast wallet address --mnemonic "$MNEMONIC" --mnemonic-index 0
 
 export RPC_URL
 export PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY"
+EXPECTED_CHAIN_ID="$CHAIN_ID" \
+MNEMONIC="$MNEMONIC" \
+NUM_OPERATORS="$NUM_ACCOUNTS" \
+NUM_MANAGED_NODES=0 \
+DEPLOY_NODE_FACTORY=true \
+./script/deployment/deploy.sh full-anvil --expected-chain-id "$CHAIN_ID"
 
-# Deploy Blacklight contracts
-bash ./script/deploy_sc.sh
-
-# Deploy ERC-8004 with HeartbeatManager integration
-if [ -f "contract_addresses.env" ]; then
-  source contract_addresses.env
-  HEARTBEAT_MANAGER="${HEARTBEAT_MANAGER:-}" bash ./script/deploy_erc8004.sh
+# Source node manager addresses too
+if [ -f "nodemanager_addresses.env" ]; then
+  source nodemanager_addresses.env
 fi
 
 # Grant HeartbeatSubmitter role to first 5 accounts
@@ -200,8 +210,8 @@ if [ -f "contract_addresses.env" ]; then
   fi
 fi
 
-# Fund and stake for operators (accounts 1 to NUM_ACCOUNTS-1)
-if [ "$SKIP_FUNDING" != "true" ] && [ "$NUM_ACCOUNTS" -gt 1 ]; then
+# Fund and stake all accounts
+if [ "$SKIP_FUNDING" != "true" ] && [ "$NUM_ACCOUNTS" -gt 0 ]; then
   # Source contract addresses
   if [ ! -f "contract_addresses.env" ]; then
     echo -e "${RED}Error:${NC} contract_addresses.env not found"
@@ -234,7 +244,7 @@ if [ "$SKIP_FUNDING" != "true" ] && [ "$NUM_ACCOUNTS" -gt 1 ]; then
   NUM_OPERATORS="$NUM_ACCOUNTS" \
   TOKEN_AMOUNT="$TOKEN_AMOUNT_WEI" \
   ETH_AMOUNT="$ETH_AMOUNT_WEI" \
-  forge script script/FundOperators.s.sol:FundOperators \
+  forge script script/deployment/FundOperators.s.sol:FundOperators \
     --rpc-url "$RPC_URL" \
     --broadcast
 fi

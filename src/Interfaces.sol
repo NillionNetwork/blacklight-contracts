@@ -106,3 +106,27 @@ interface IValidationRegistry {
         bytes32 heartbeatKey
     ) external;
 }
+
+interface IRewardPolicyExtended is IRewardPolicy {
+    function rewards(address account) external view returns (uint256);
+    function rewardToken() external view returns (address);
+}
+
+interface INodeOperator {
+    function setRewardBehavior(uint8 behavior) external;
+    function resetRewardBehavior() external;
+    function setModeFeeBps(uint256 withdrawBps, uint256 restakeBps) external;
+
+    function assignUser(address user) external;
+    function harvestRewards() external;
+
+    function stake() external;
+    function requestUnstake(uint256 amount) external;
+    function withdrawUnstaked() external;
+    function nodeAddress() external view returns (address);
+    function nodeUser() external view returns (address);
+    function rewardBehavior() external view returns (uint8);
+    function withdrawFeeBps() external view returns (uint256);
+    function restakeFeeBps() external view returns (uint256);
+    function minStake() external view returns (uint256);
+}

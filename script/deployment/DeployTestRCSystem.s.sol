@@ -5,14 +5,14 @@ import "forge-std/Script.sol";
 import "forge-std/console2.sol";
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "../src/mocks/TESTToken.sol";
-import "../src/ProtocolConfig.sol";
-import "../src/StakingOperators.sol";
-import "../src/WeightedCommitteeSelector.sol";
-import "../src/HeartbeatManager.sol";
-import "../src/RewardPolicy.sol";
-import "../src/JailingPolicy.sol";
-import "../src/NoOpSlashingPolicy.sol";
+import "../../src/mocks/TESTToken.sol";
+import "../../src/ProtocolConfig.sol";
+import "../../src/StakingOperators.sol";
+import "../../src/WeightedCommitteeSelector.sol";
+import "../../src/HeartbeatManager.sol";
+import "../../src/RewardPolicy.sol";
+import "../../src/JailingPolicy.sol";
+import "../../src/NoOpSlashingPolicy.sol";
 
 /// @notice Deploys and wires the full contract suite (staking, selector, config, manager, slashing, rewards).
 /// @dev Configure via env vars when running `forge script`:
