@@ -515,7 +515,7 @@ deploy_node_factory() {
 
   deployer="$(cast wallet address --private-key "$private_key")"
   chain_id="${L2_CHAIN_ID:-$(cast chain-id --rpc-url "$rpc_url")}"
-  verifier_url="${L2_VERIFIER_URL:-https://explorer-nilav-shzvox09l5.t.conduit.xyz/api/}"
+  verifier_url="${L2_VERIFIER_URL:-https://explorer.testnet.nillion.network/api/v2/}"
   compiler_version="$(toolchain_solc_version)"
   if [[ -z "$compiler_version" ]]; then
     compiler_version="0.8.26"
