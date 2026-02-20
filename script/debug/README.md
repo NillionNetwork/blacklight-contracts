@@ -87,3 +87,17 @@ Optional:
 ```bash
 source contract_addresses.env
 ```
+
+### Working verification script for Factory
+
+
+forge verify-contract \
+  --rpc-url https://rpc.testnet.nillion.network \
+  --chain 78651 \
+  --verifier blockscout \
+  --verifier-url "https://explorer.testnet.nillion.network/api/" \
+  --compiler-version 0.8.26 \
+  --via-ir \
+  --constructor-args "$(cast abi-encode 'constructor(address)' 0xfB355bC94652aF0Fe8ca785bb6690776f3fD41D2)" \
+  0x7995aEd2a83709Ae85583a112682eB55546330d9 \
+  src/NodeOperatorFactory.sol:NodeOperatorFactory

@@ -23,11 +23,9 @@ contract NodeOperatorTest is BlacklightFixture {
 
         config.setParams(5, 0, 100, 0, 6700, 6700, 5 minutes, 2 minutes, 100, 1e6);
 
-        // address(this) acts as both owner and routerFactory
         nodeOp = new NodeOperator(
             address(this),
             STAKE_AMOUNT,
-            address(this),
             node1,
             address(stakingOps),
             address(rewardPolicy),
@@ -38,14 +36,14 @@ contract NodeOperatorTest is BlacklightFixture {
         vm.prank(node1);
         stakingOps.approveStaker(address(nodeOp));
 
-        // Mint to test contract (acting as routerFactory)
+        // Mint to test contract (acting as owner/factory)
         stakeToken.mint(address(this), 20_000_000e6);
     }
 
     /// @dev Mimics what the Factory does: transfer tokens to operator, then call stake
     function _stakeViaFactory(uint256 amount) internal {
         stakeToken.transfer(address(nodeOp), amount);
-        nodeOp.stake(amount);
+        nodeOp.stake();
     }
 
     function test_nodeConfigured() public view {
@@ -83,27 +81,28 @@ contract NodeOperatorTest is BlacklightFixture {
         nodeOp.assignUser(user1);
         stakeToken.transfer(address(nodeOp), STAKE_AMOUNT - 1);
         vm.expectRevert(NodeOperator.BelowMinimumStake.selector);
-        nodeOp.stake(STAKE_AMOUNT - 1);
+        nodeOp.stake();
     }
 
-    function test_directEntryPointsRevertFactoryOnly() public {
+    function test_directEntryPointsRevertForNonOwner() public {
         address outsider = address(0xDEAD);
+        bytes memory expectedRevert = abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", outsider);
 
         vm.startPrank(outsider);
 
-        vm.expectRevert(NodeOperator.FactoryOnly.selector);
-        nodeOp.stake(STAKE_AMOUNT);
+        vm.expectRevert(expectedRevert);
+        nodeOp.stake();
 
-        vm.expectRevert(NodeOperator.FactoryOnly.selector);
+        vm.expectRevert(expectedRevert);
         nodeOp.requestUnstake(STAKE_AMOUNT);
 
-        vm.expectRevert(NodeOperator.FactoryOnly.selector);
+        vm.expectRevert(expectedRevert);
         nodeOp.withdrawUnstaked();
 
-        vm.expectRevert(NodeOperator.FactoryOnly.selector);
+        vm.expectRevert(expectedRevert);
         nodeOp.harvestRewards();
 
-        vm.expectRevert(NodeOperator.FactoryOnly.selector);
+        vm.expectRevert(expectedRevert);
         nodeOp.assignUser(user1);
 
         vm.stopPrank();
@@ -169,6 +168,70 @@ contract NodeOperatorTest is BlacklightFixture {
         nodeOp.setRewardBehavior(uint8(NodeOperator.RewardBehavior.AutoRestake));
     }
 
+    function test_defaultRewardBehavior_isAutoRestakeWhenTokensMatch() public {
+        NodeOperator restakeDefaultOp = new NodeOperator(
+            address(this),
+            STAKE_AMOUNT,
+            node1,
+            address(stakingOps),
+            address(rewardPolicy),
+            address(stakeToken),
+            address(stakeToken)
+        );
+        assertEq(
+            uint256(restakeDefaultOp.rewardBehavior()), uint256(uint8(NodeOperator.RewardBehavior.AutoRestake))
+        );
+    }
+
+    function test_resetRewardBehavior_usesTokenPairDefault() public {
+        NodeOperator restakeDefaultOp = new NodeOperator(
+            address(this),
+            STAKE_AMOUNT,
+            node1,
+            address(stakingOps),
+            address(rewardPolicy),
+            address(stakeToken),
+            address(stakeToken)
+        );
+
+        restakeDefaultOp.setRewardBehavior(uint8(NodeOperator.RewardBehavior.WithdrawToUser));
+        restakeDefaultOp.resetRewardBehavior();
+
+        assertEq(
+            uint256(restakeDefaultOp.rewardBehavior()), uint256(uint8(NodeOperator.RewardBehavior.AutoRestake))
+        );
+    }
+
+    function test_assignUser_reappliesDefaultBehaviorAfterRelease() public {
+        NodeOperator restakeDefaultOp = new NodeOperator(
+            address(this),
+            STAKE_AMOUNT,
+            node1,
+            address(stakingOps),
+            address(rewardPolicy),
+            address(stakeToken),
+            address(stakeToken)
+        );
+
+        vm.prank(node1);
+        stakingOps.approveStaker(address(restakeDefaultOp));
+
+        restakeDefaultOp.assignUser(user1);
+        stakeToken.transfer(address(restakeDefaultOp), STAKE_AMOUNT);
+        restakeDefaultOp.stake();
+
+        restakeDefaultOp.setRewardBehavior(uint8(NodeOperator.RewardBehavior.WithdrawToUser));
+        restakeDefaultOp.requestUnstake(STAKE_AMOUNT);
+        vm.warp(block.timestamp + stakingOps.unstakeDelay() + 1);
+        restakeDefaultOp.withdrawUnstaked();
+
+        restakeDefaultOp.assignUser(user2);
+
+        assertEq(
+            uint256(restakeDefaultOp.rewardBehavior()), uint256(uint8(NodeOperator.RewardBehavior.AutoRestake))
+        );
+    }
+
     function test_setModeFeeBps_setsModeFees() public {
         nodeOp.setModeFeeBps(1200, 800);
         assertEq(nodeOp.withdrawFeeBps(), 1200);
@@ -226,7 +289,6 @@ contract NodeOperatorTest is BlacklightFixture {
         NodeOperator fresh = new NodeOperator(
             address(this),
             STAKE_AMOUNT,
-            address(this),
             node1,
             address(stakingOps),
             address(0), // no rewardPolicy

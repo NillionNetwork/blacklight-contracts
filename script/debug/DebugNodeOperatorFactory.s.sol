@@ -70,7 +70,7 @@ contract DebugNodeOperatorFactory is Script {
         console2.log("factory.nodeToUser:", assignedUser);
         console2.log("factory.isFreeNode:", isFree);
 
-        console2.log("nodeOperator.routerFactory:", nodeOperator.routerFactory());
+        console2.log("nodeOperator.owner:", nodeOperator.owner());
         console2.log("nodeOperator.nodeAddress:", nodeOperator.nodeAddress());
         console2.log("nodeOperator.nodeUser:", nodeOperator.nodeUser());
         console2.log("nodeOperator.withdrawFeeBps:", nodeOperator.withdrawFeeBps());

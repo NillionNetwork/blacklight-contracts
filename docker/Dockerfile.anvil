@@ -5,7 +5,12 @@ WORKDIR /app
 
 USER root
 # Install tooling needed by scripts and Foundry (git is required for submodules/deps)
-RUN apt-get update -y && apt-get install -y curl jq git
+RUN apt-get update -y && apt-get install -y curl jq git python3
+
+# The base image ships whichever nightly foundryup installs; bypass the
+# .tool-versions pin check so the deploy scripts don't reject it.
+ENV ALLOW_UNPINNED_FORGE=1
+ENV FOUNDRY_DISABLE_NIGHTLY_WARNING=1
 
 COPY . .
 
