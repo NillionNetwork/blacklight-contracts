@@ -113,8 +113,12 @@ interface IRewardPolicyExtended is IRewardPolicy {
 }
 
 interface INodeOperator {
-    function setRewardBehavior(uint8 behavior) external;
-    function resetRewardBehavior() external;
+    enum RewardBehavior {
+        WithdrawToUser,
+        AutoRestake
+    }
+
+    function setRewardBehavior(RewardBehavior behavior) external;
     function setModeFeeBps(uint256 withdrawBps, uint256 restakeBps) external;
 
     function assignUser(address user) external;

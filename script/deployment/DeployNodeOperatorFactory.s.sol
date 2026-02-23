@@ -15,7 +15,6 @@ import "../../src/NodeOperatorFactory.sol";
 ///      - STAKE_TOKEN
 ///
 ///      Optional env vars:
-///      - REWARD_TOKEN            (default: STAKE_TOKEN)
 ///      - FACTORY_WITHDRAW_FEE_BPS (default: 3000)
 ///      - FACTORY_RESTAKE_FEE_BPS  (default: 1500)
 ///      - FACTORY_MIN_STAKE        (default: 1_000_000e6, i.e. 1 million NIL with 6 decimals)
@@ -27,21 +26,14 @@ contract DeployNodeOperatorFactory is Script {
         address stakingOps   = vm.envAddress("STAKING_OPERATORS");
         address rewardPolicy = vm.envAddress("REWARD_POLICY");
         address stakeToken   = vm.envAddress("STAKE_TOKEN");
-        address rewardToken  = vm.envOr("REWARD_TOKEN", stakeToken);
-
         uint256 withdrawFeeBps = vm.envOr("FACTORY_WITHDRAW_FEE_BPS", uint256(3000));
         uint256 restakeFeeBps  = vm.envOr("FACTORY_RESTAKE_FEE_BPS",  uint256(1500));
         uint256 minStake       = vm.envOr("FACTORY_MIN_STAKE",        uint256(1_000_000e6));
 
         vm.startBroadcast(deployerPrivateKey);
 
-        factory = new NodeOperatorFactory(deployer);
-        factory.setStakingOperators(stakingOps);
-        factory.setRewardPolicy(rewardPolicy);
-        factory.setStakingToken(stakeToken);
-        factory.setRewardToken(rewardToken);
+        factory = new NodeOperatorFactory(deployer, stakingOps, rewardPolicy, stakeToken, minStake);
         factory.setDefaultModeFeeBps(withdrawFeeBps, restakeFeeBps);
-        factory.setMinStake(minStake);
 
         vm.stopBroadcast();
 
@@ -49,8 +41,7 @@ contract DeployNodeOperatorFactory is Script {
         console.log("  owner:            ", deployer);
         console.log("  stakingOperators: ", stakingOps);
         console.log("  rewardPolicy:     ", rewardPolicy);
-        console.log("  stakeToken:       ", stakeToken);
-        console.log("  rewardToken:      ", rewardToken);
+        console.log("  token:            ", stakeToken);
         console.log("  withdrawFeeBps:   ", withdrawFeeBps);
         console.log("  restakeFeeBps:    ", restakeFeeBps);
         console.log("  minStake:         ", minStake);

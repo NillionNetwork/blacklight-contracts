@@ -7,9 +7,8 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./Interfaces.sol";
 
 /// @title NodeOperator
-/// @notice Manages a pool of pre-provisioned node addresses and delegates staking/reward
-///         operations on behalf of users. Uses a MasterChef-style reward accumulator for
-///         fair distribution of pooled rewards, with a configurable fee on harvested rewards.
+/// @notice Manages a single pre-provisioned node address and delegates staking/reward
+///         operations on behalf of a user.
 contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -24,15 +23,14 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     error BelowMinimumStake();
     error FeeTooHigh();
     error InvalidUserAssignment();
-    error InvalidBehavior();
-    error RestakeModeUnsupportedTokenPair();
+    error TokenMismatch();
 
     // ──────────────────────────────────────────────
     // Events
     // ──────────────────────────────────────────────
 
     event NodeAssigned(address indexed user, address indexed node);
-    event NodeReleased(address indexed user, address indexed node);
+
     event Staked(address indexed user, uint256 amount, address indexed node);
     event UnstakeRequested(address indexed user, uint256 amount, address indexed node);
     event UnstakedWithdrawn(address indexed user, uint256 amount, address indexed node);
@@ -46,8 +44,7 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     event RewardsRestaked(address indexed user, uint256 amount, uint256 fee, address indexed node);
     event StakingOperatorsUpdated(address oldAddress, address newAddress);
     event RewardPolicyUpdated(address oldAddress, address newAddress);
-    event StakingTokenUpdated(address oldAddress, address newAddress);
-    event RewardTokenUpdated(address oldAddress, address newAddress);
+    event TokenUpdated(address oldAddress, address newAddress);
     event MinStakeUpdated(uint256 oldMinStake, uint256 newMinStake);
 
     // ──────────────────────────────────────────────
@@ -68,8 +65,7 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
 
     IStakingOperators public stakingOperators;
     IRewardPolicyExtended public rewardPolicy;
-    IERC20 public stakingToken;
-    IERC20 public rewardToken;
+    IERC20 public token;
 
     // ──────────────────────────────────────────────
     // Internal state
@@ -81,11 +77,6 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     // ──────────────────────────────────────────────
     // Fee management
     // ──────────────────────────────────────────────
-
-    enum RewardBehavior {
-        WithdrawToUser,
-        AutoRestake
-    }
 
     RewardBehavior private _rewardBehavior;
     uint256 public override withdrawFeeBps;
@@ -101,16 +92,29 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         address nodeAddress_,
         address stakingOperators_,
         address rewardPolicy_,
-        address stakingToken_,
-        address rewardToken_
+        address token_,
+        uint256 withdrawFeeBps_,
+        uint256 restakeFeeBps_
     ) Ownable(owner_) {
         if (nodeAddress_ == address(0)) revert ZeroAddress();
+        if (withdrawFeeBps_ > MAX_FEE_BPS || restakeFeeBps_ > MAX_FEE_BPS) revert FeeTooHigh();
+        if (token_ != address(0)) {
+            if (
+                stakingOperators_ != address(0)
+                    && IStakingOperators(stakingOperators_).stakingToken() != token_
+            ) revert TokenMismatch();
+            if (
+                rewardPolicy_ != address(0)
+                    && IRewardPolicyExtended(rewardPolicy_).rewardToken() != token_
+            ) revert TokenMismatch();
+        }
         minStake = minStake_;
         stakingOperators = IStakingOperators(stakingOperators_);
         rewardPolicy = IRewardPolicyExtended(rewardPolicy_);
-        stakingToken = IERC20(stakingToken_);
-        rewardToken = IERC20(rewardToken_);
-        _rewardBehavior = _defaultRewardBehavior();
+        token = IERC20(token_);
+        withdrawFeeBps = withdrawFeeBps_;
+        restakeFeeBps = restakeFeeBps_;
+        _rewardBehavior = RewardBehavior.AutoRestake;
         nodeAddress = nodeAddress_;
     }
 
@@ -130,16 +134,13 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         rewardPolicy = IRewardPolicyExtended(addr);
     }
 
-    function setStakingToken(address addr) external onlyOwner {
+    function setToken(address addr) external onlyOwner {
         if (addr == address(0)) revert ZeroAddress();
-        emit StakingTokenUpdated(address(stakingToken), addr);
-        stakingToken = IERC20(addr);
-    }
+        if (stakingOperators.stakingToken() != addr) revert TokenMismatch();
+        if (rewardPolicy.rewardToken() != addr) revert TokenMismatch();
 
-    function setRewardToken(address addr) external onlyOwner {
-        if (addr == address(0)) revert ZeroAddress();
-        emit RewardTokenUpdated(address(rewardToken), addr);
-        rewardToken = IERC20(addr);
+        emit TokenUpdated(address(token), addr);
+        token = IERC20(addr);
     }
 
     function setModeFeeBps(uint256 withdrawBps, uint256 restakeBps) external override onlyOwner {
@@ -159,35 +160,21 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     // Internal node management
     // ──────────────────────────────────────────────
 
-    function _defaultRewardBehavior() internal view returns (RewardBehavior) {
-        return
-            address(rewardToken) == address(stakingToken) ? RewardBehavior.AutoRestake : RewardBehavior.WithdrawToUser;
-    }
-
     function _assignNode(address user) internal {
         nodeUser = user;
-        _rewardBehavior = _defaultRewardBehavior();
+        _rewardBehavior = RewardBehavior.AutoRestake;
         emit NodeAssigned(user, nodeAddress);
     }
 
-    function _releaseNode() internal {
-        // Settle any remaining rewards to the outgoing user before releasing,
-        // preventing reward bleed to the next user assigned to this operator.
-        _rewardBehavior = RewardBehavior.WithdrawToUser;
-        try this.harvestRewards() {} catch {}
-        address user = nodeUser;
-        nodeUser = address(0);
-        emit NodeReleased(user, nodeAddress);
-    }
 
     function _ensureStakeConfigured() internal view {
-        if (address(stakingOperators) == address(0) || address(stakingToken) == address(0)) {
+        if (address(stakingOperators) == address(0) || address(token) == address(0)) {
             revert ContractNotConfigured();
         }
     }
 
     function _ensureRewardConfigured() internal view {
-        if (address(rewardPolicy) == address(0) || address(rewardToken) == address(0)) {
+        if (address(rewardPolicy) == address(0) || address(token) == address(0)) {
             revert ContractNotConfigured();
         }
     }
@@ -201,18 +188,21 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         _ensureStakeConfigured();
 
         // Use actual balance to support fee-on-transfer tokens
-        uint256 available = stakingToken.balanceOf(address(this));
+        uint256 available = token.balanceOf(address(this));
         if (available == 0) revert ZeroAmount();
 
         uint256 currentStake = stakingOperators.stakeOf(nodeAddress);
         if (currentStake + available < minStake) revert BelowMinimumStake();
 
-        stakingToken.forceApprove(address(stakingOperators), available);
+        token.forceApprove(address(stakingOperators), available);
         stakingOperators.stakeTo(nodeAddress, available);
 
         emit Staked(nodeUser, available, nodeAddress);
     }
 
+    /// @notice Requests to unstake a portion of the node's stake.
+    /// @param amount The amount of stake to unstake (must be less than the current stake).
+    /// @dev Unstaking below minStake will revert except when the remaining stake is 0.
     function requestUnstake(uint256 amount) external override nonReentrant onlyOwner {
         if (nodeUser == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
@@ -221,36 +211,36 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         uint256 currentStake = stakingOperators.stakeOf(nodeAddress);
         if (amount > currentStake) revert InsufficientStake();
 
+        uint256 remaining = currentStake - amount;
+        if (remaining != 0 && remaining < minStake) revert BelowMinimumStake();
+
         stakingOperators.requestUnstake(nodeAddress, amount);
 
         emit UnstakeRequested(nodeUser, amount, nodeAddress);
     }
 
+    /// @notice Withdraws the unstaked stake from the node.
+    /// @dev Withdrawing will revert if the node has no pending unstake.
     function withdrawUnstaked() external override nonReentrant onlyOwner {
         if (nodeUser == address(0)) revert ZeroAddress();
         _ensureStakeConfigured();
 
-        uint256 balBefore = stakingToken.balanceOf(address(this));
+        uint256 balBefore = token.balanceOf(address(this));
         stakingOperators.withdrawUnstaked(nodeAddress);
-        uint256 balAfter = stakingToken.balanceOf(address(this));
+        uint256 balAfter = token.balanceOf(address(this));
         uint256 withdrawn;
         unchecked {
             withdrawn = balAfter - balBefore;
         }
 
         if (withdrawn > 0) {
-            stakingToken.safeTransfer(nodeUser, withdrawn);
+            token.safeTransfer(nodeUser, withdrawn);
         }
 
         emit UnstakedWithdrawn(nodeUser, withdrawn, nodeAddress);
-        // Release only when StakingOperators has fully cleared the staker, which happens
-        // only after both active stake AND all unbonding tranches are drained.
-        if (stakingOperators.operatorStaker(nodeAddress) == address(0)) {
-            _releaseNode();
-        }
     }
 
-    /// @dev Distributes the entire rewardToken balance (claimed + any direct transfers).
+    /// @dev Distributes the entire token balance (claimed + any direct transfers).
     ///      This sweep-all design is intentional so that tokens arriving via any mechanism
     ///      are properly distributed rather than locked.
     function harvestRewards() external override nonReentrant onlyOwner {
@@ -261,29 +251,18 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         _ensureRewardConfigured();
         if (nodeUser == address(0)) revert ZeroAddress();
         _claimRewards();
-        uint256 harvestable = rewardToken.balanceOf(address(this));
+        uint256 harvestable = token.balanceOf(address(this));
         _harvestIfPossible(harvestable);
     }
 
-    function setRewardBehavior(uint8 behavior) external override onlyOwner {
-        if (behavior > uint8(RewardBehavior.AutoRestake)) revert InvalidBehavior();
-        RewardBehavior nextBehavior = RewardBehavior(behavior);
-        if (nextBehavior == RewardBehavior.AutoRestake && address(rewardToken) != address(stakingToken)) {
-            revert RestakeModeUnsupportedTokenPair();
-        }
-
+    function setRewardBehavior(RewardBehavior behavior) external override onlyOwner {
         RewardBehavior oldBehavior = _rewardBehavior;
-        _rewardBehavior = nextBehavior;
-        emit RewardBehaviorUpdated(nodeUser, uint8(oldBehavior), behavior);
+        _rewardBehavior = behavior;
+        emit RewardBehaviorUpdated(nodeUser, uint8(oldBehavior), uint8(behavior));
     }
 
-    function resetRewardBehavior() external override onlyOwner {
-        RewardBehavior oldBehavior = _rewardBehavior;
-        RewardBehavior nextBehavior = _defaultRewardBehavior();
-        _rewardBehavior = nextBehavior;
-        emit RewardBehaviorUpdated(nodeUser, uint8(oldBehavior), uint8(nextBehavior));
-    }
 
+    /// @dev No-op if `user` is already assigned; reverts if a different user is bound.
     function assignUser(address user) external override onlyOwner {
         if (user == address(0)) revert ZeroAddress();
         if (nodeUser != address(0) && nodeUser != user) revert InvalidUserAssignment();
@@ -296,9 +275,9 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         uint256 available = rewardPolicy.rewards(address(this));
         if (available == 0) return;
 
-        uint256 balBefore = rewardToken.balanceOf(address(this));
+        uint256 balBefore = token.balanceOf(address(this));
         rewardPolicy.claim();
-        uint256 balAfter = rewardToken.balanceOf(address(this));
+        uint256 balAfter = token.balanceOf(address(this));
         uint256 claimed;
         unchecked {
             claimed = balAfter - balBefore;
@@ -318,7 +297,9 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         bool restake = _rewardBehavior == RewardBehavior.AutoRestake;
         uint256 feeBpsToUse = restake ? restakeFeeBps : withdrawFeeBps;
         uint256 fee = (harvestableRewards * feeBpsToUse) / 10000;
-        if (fee != 0) rewardToken.safeTransfer(owner(), fee);
+        // Fees are sent to owner() which is the NodeOperatorFactory; the factory
+        // accumulates them and the admin can withdraw via Factory.withdrawFees().
+        if (fee != 0) token.safeTransfer(owner(), fee);
         emit FeesCollected(fee);
 
         uint256 net;
@@ -327,16 +308,15 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         }
 
         if (!restake) {
-            if (net != 0) rewardToken.safeTransfer(nodeUser, net);
+            if (net != 0) token.safeTransfer(nodeUser, net);
             emit RewardsHarvested(net, fee);
             return;
         }
 
-        if (address(rewardToken) != address(stakingToken)) revert RestakeModeUnsupportedTokenPair();
         _ensureStakeConfigured();
 
         if (net != 0) {
-            stakingToken.forceApprove(address(stakingOperators), net);
+            token.forceApprove(address(stakingOperators), net);
             stakingOperators.stakeTo(nodeAddress, net);
         }
         emit RewardsRestaked(nodeUser, net, fee, nodeAddress);

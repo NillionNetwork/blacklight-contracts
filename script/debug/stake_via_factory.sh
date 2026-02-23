@@ -73,7 +73,7 @@ if [ -z "$AMOUNT_RAW" ] || ! [[ "$AMOUNT_RAW" =~ ^[0-9]+$ ]] || [ "$AMOUNT_RAW" 
 fi
 
 USER_ADDRESS="$(cast wallet address --private-key "$PRIVATE_KEY")"
-STAKE_TOKEN="$(cast call "$NODE_OPERATOR_FACTORY" 'stakingToken()(address)' --rpc-url "$RPC_URL")"
+STAKE_TOKEN="$(cast call "$NODE_OPERATOR_FACTORY" 'token()(address)' --rpc-url "$RPC_URL")"
 STAKING_OPERATORS="$(cast call "$NODE_OPERATOR_FACTORY" 'stakingOperators()(address)' --rpc-url "$RPC_URL")"
 SYMBOL="$(cast call "$STAKE_TOKEN" 'symbol()(string)' --rpc-url "$RPC_URL" 2>/dev/null || echo "TEST")"
 SYMBOL="${SYMBOL%\"}"

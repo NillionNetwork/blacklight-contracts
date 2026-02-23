@@ -29,13 +29,10 @@ library BlacklightNodeOpsLib {
         uint256 factoryRestakeFeeBps = vm.envOr("FACTORY_RESTAKE_FEE_BPS", uint256(1500));
         uint256 factoryMinStake = vm.envOr("FACTORY_MIN_STAKE", uint256(1_000_000e6));
 
-        nodeFactory = new NodeOperatorFactory(deployer);
-        nodeFactory.setStakingOperators(address(stakingOps));
-        nodeFactory.setRewardPolicy(address(rewardPolicy));
-        nodeFactory.setStakingToken(address(token));
-        nodeFactory.setRewardToken(address(token));
+        nodeFactory = new NodeOperatorFactory(
+            deployer, address(stakingOps), address(rewardPolicy), address(token), factoryMinStake
+        );
         nodeFactory.setDefaultModeFeeBps(factoryWithdrawFeeBps, factoryRestakeFeeBps);
-        nodeFactory.setMinStake(factoryMinStake);
 
         managedNodes = new address[](numManagedNodes);
         managedNodeKeys = new uint256[](numManagedNodes);
