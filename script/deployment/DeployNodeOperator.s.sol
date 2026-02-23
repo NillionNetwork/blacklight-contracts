@@ -11,7 +11,6 @@ import "../../src/NodeOperator.sol";
 ///      - STAKING_OPERATORS: StakingOperators contract address (required)
 ///      - REWARD_POLICY: RewardPolicy contract address (required)
 ///      - STAKE_TOKEN: Staking token address (required)
-///      - REWARD_TOKEN: Reward token address (required)
 ///      - NODE_ADDRESS: Node/operator address managed by this instance (required)
 ///      - WITHDRAW_FEE_BPS: Withdraw-mode fee in basis points (default: 3000 = 30%)
 ///      - RESTAKE_FEE_BPS: Restake-mode fee in basis points (default: 1500 = 15%)
@@ -24,7 +23,6 @@ contract DeployNodeOperator is Script {
         address stakingOperators = vm.envAddress("STAKING_OPERATORS");
         address rewardPolicyAddr = vm.envAddress("REWARD_POLICY");
         address stakeToken = vm.envAddress("STAKE_TOKEN");
-        address rewardTokenAddr = vm.envAddress("REWARD_TOKEN");
         address nodeAddress = vm.envAddress("NODE_ADDRESS");
         uint256 withdrawFeeBpsVal = vm.envOr("WITHDRAW_FEE_BPS", uint256(3000));
         uint256 restakeFeeBpsVal = vm.envOr("RESTAKE_FEE_BPS", uint256(1500));
@@ -39,9 +37,9 @@ contract DeployNodeOperator is Script {
             stakingOperators,
             rewardPolicyAddr,
             stakeToken,
-            rewardTokenAddr
+            withdrawFeeBpsVal,
+            restakeFeeBpsVal
         );
-        nodeOperator.setModeFeeBps(withdrawFeeBpsVal, restakeFeeBpsVal);
 
         vm.stopBroadcast();
 

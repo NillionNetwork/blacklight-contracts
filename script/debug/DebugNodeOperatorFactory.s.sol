@@ -30,8 +30,7 @@ contract DebugNodeOperatorFactory is Script {
         console2.log("owner:", factory.owner());
         console2.log("stakingOperators:", stakingAddr);
         console2.log("rewardPolicy:", factory.rewardPolicy());
-        console2.log("stakingToken:", factory.stakingToken());
-        console2.log("rewardToken:", factory.rewardToken());
+        console2.log("token:", factory.token());
         console2.log("defaultWithdrawFeeBps:", factory.defaultWithdrawFeeBps());
         console2.log("defaultRestakeFeeBps:", factory.defaultRestakeFeeBps());
         console2.log("minStake:", factory.minStake());
