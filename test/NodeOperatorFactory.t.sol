@@ -18,6 +18,12 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
 
     uint256 constant STAKE_AMOUNT = 1_000_000e6;
 
+    function _approvePredictedStaker(address node) internal returns (address predicted) {
+        predicted = factory.predictNodeOperatorAddress(node);
+        vm.prank(node);
+        stakingOps.approveStaker(predicted);
+    }
+
     function setUp() public {
         uint256[] memory stakes = new uint256[](5);
         for (uint256 i = 0; i < 5; i++) {
@@ -27,16 +33,13 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         config.setParams(5, 0, 100, 0, 6700, 6700, 5 minutes, 2 minutes, 100, 1e6);
 
         // Deploy a reward policy that uses stakeToken (same token for staking & rewards)
-        sameTokenRewardPolicy =
-            new RewardPolicy(IERC20(address(stakeToken)), address(manager), governance, 1 days, 0);
-        config.setModules(address(stakingOps), address(selector), address(jailingPolicy), address(sameTokenRewardPolicy));
+        sameTokenRewardPolicy = new RewardPolicy(IERC20(address(stakeToken)), address(manager), governance, 1 days, 0);
+        config.setModules(
+            address(stakingOps), address(selector), address(jailingPolicy), address(sameTokenRewardPolicy)
+        );
 
         factory = new NodeOperatorFactory(
-            address(this),
-            address(stakingOps),
-            address(sameTokenRewardPolicy),
-            address(stakeToken),
-            STAKE_AMOUNT
+            address(this), address(stakingOps), address(sameTokenRewardPolicy), address(stakeToken), STAKE_AMOUNT
         );
         factory.setDefaultModeFeeBps(0, 0);
     }
@@ -46,8 +49,10 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     // ──────────────────────────────────────────────
 
     function test_addNode_deploysAndConfiguresNodeOperator() public {
+        address predicted = _approvePredictedStaker(nodeA);
         address opAddr = factory.addNode(nodeA);
 
+        assertEq(opAddr, predicted);
         NodeOperator op = NodeOperator(opAddr);
         assertEq(op.owner(), address(factory));
         assertEq(op.nodeAddress(), nodeA);
@@ -72,8 +77,22 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     }
 
     function test_addNode_revertsForDuplicateNode() public {
+        _approvePredictedStaker(nodeA);
         factory.addNode(nodeA);
         vm.expectRevert(NodeOperatorFactory.NodeAlreadyRegistered.selector);
+        factory.addNode(nodeA);
+    }
+
+    function test_addNode_revertsWhenPredictedStakerNotApproved() public {
+        vm.expectRevert(NodeOperatorFactory.StakerNotPreapproved.selector);
+        factory.addNode(nodeA);
+    }
+
+    function test_addNode_revertsWhenWrongStakerApproved() public {
+        vm.prank(nodeA);
+        stakingOps.approveStaker(address(0xBEEF));
+
+        vm.expectRevert(NodeOperatorFactory.StakerNotPreapproved.selector);
         factory.addNode(nodeA);
     }
 
@@ -82,10 +101,8 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     // ──────────────────────────────────────────────
 
     function test_stake_autoBindsUserToFreeNode() public {
+        _approvePredictedStaker(nodeA);
         address opAddr = factory.addNode(nodeA);
-
-        vm.prank(nodeA);
-        stakingOps.approveStaker(opAddr);
 
         stakeToken.mint(userA, 2_000_000e6);
         vm.prank(userA);
@@ -100,13 +117,10 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     }
 
     function test_stake_secondUserBindsToDifferentNode() public {
-        address opAAddr = factory.addNode(nodeA);
-        address opBAddr = factory.addNode(nodeB);
-
-        vm.prank(nodeA);
-        stakingOps.approveStaker(opAAddr);
-        vm.prank(nodeB);
-        stakingOps.approveStaker(opBAddr);
+        _approvePredictedStaker(nodeA);
+        _approvePredictedStaker(nodeB);
+        factory.addNode(nodeA);
+        factory.addNode(nodeB);
 
         stakeToken.mint(userA, 2_000_000e6);
         stakeToken.mint(userB, 2_000_000e6);
@@ -126,10 +140,8 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     }
 
     function test_stake_revertsNoFreeNodeOperator() public {
-        address opAddr = factory.addNode(nodeA);
-
-        vm.prank(nodeA);
-        stakingOps.approveStaker(opAddr);
+        _approvePredictedStaker(nodeA);
+        factory.addNode(nodeA);
 
         stakeToken.mint(userA, 2_000_000e6);
         stakeToken.mint(userB, 2_000_000e6);
@@ -153,13 +165,10 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     // ──────────────────────────────────────────────
 
     function test_isolatedRewards_twoUsersOnDifferentNodes() public {
-        address opAAddr = factory.addNode(nodeA);
-        address opBAddr = factory.addNode(nodeB);
-
-        vm.prank(nodeA);
-        stakingOps.approveStaker(opAAddr);
-        vm.prank(nodeB);
-        stakingOps.approveStaker(opBAddr);
+        _approvePredictedStaker(nodeA);
+        _approvePredictedStaker(nodeB);
+        factory.addNode(nodeA);
+        factory.addNode(nodeB);
 
         stakeToken.mint(userA, 2_000_000e6);
         stakeToken.mint(userB, 2_000_000e6);
@@ -200,10 +209,8 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
 
     function test_withdrawFees_ownerCanWithdrawHarvestedFees() public {
         factory.setDefaultModeFeeBps(3000, 1500);
+        _approvePredictedStaker(nodeA);
         address opAddr = factory.addNode(nodeA);
-
-        vm.prank(nodeA);
-        stakingOps.approveStaker(opAddr);
 
         stakeToken.mint(userA, 2_000_000e6);
         vm.prank(userA);
@@ -237,10 +244,8 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
 
     function test_claimRewards_restakeModeCompoundsAndTakesRestakeFee() public {
         factory.setDefaultModeFeeBps(3000, 1500);
+        _approvePredictedStaker(nodeA);
         address opAddr = factory.addNode(nodeA);
-
-        vm.prank(nodeA);
-        stakingOps.approveStaker(opAddr);
 
         stakeToken.mint(userA, 2_000_000e6);
         vm.prank(userA);
@@ -261,10 +266,8 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     }
 
     function test_withdrawUnstaked_preservesRewardBehavior() public {
+        _approvePredictedStaker(nodeA);
         address opAddr = factory.addNode(nodeA);
-
-        vm.prank(nodeA);
-        stakingOps.approveStaker(opAddr);
 
         stakeToken.mint(userA, 2_000_000e6);
         vm.prank(userA);
@@ -291,6 +294,7 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
 
     function test_setDefaultModeFeeBps_appliesToNewOperatorsOnly() public {
         factory.setDefaultModeFeeBps(1111, 2222);
+        _approvePredictedStaker(nodeA);
         address opAAddr = factory.addNode(nodeA);
         assertEq(NodeOperator(opAAddr).withdrawFeeBps(), 1111);
         assertEq(NodeOperator(opAAddr).restakeFeeBps(), 2222);
@@ -299,12 +303,14 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         assertEq(NodeOperator(opAAddr).withdrawFeeBps(), 1111);
         assertEq(NodeOperator(opAAddr).restakeFeeBps(), 2222);
 
+        _approvePredictedStaker(nodeB);
         address opBAddr = factory.addNode(nodeB);
         assertEq(NodeOperator(opBAddr).withdrawFeeBps(), 3333);
         assertEq(NodeOperator(opBAddr).restakeFeeBps(), 4444);
     }
 
     function test_setOperatorModeFeeBps_ownerCanOverridePerOperator() public {
+        _approvePredictedStaker(nodeA);
         address opAddr = factory.addNode(nodeA);
         factory.setOperatorModeFeeBps(opAddr, 3100, 1700);
 
@@ -333,13 +339,10 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
 
     function test_harvestAllRewards_harvestsAllAssignedNodes() public {
         factory.setDefaultModeFeeBps(3000, 1500);
-        address opAAddr = factory.addNode(nodeA);
-        address opBAddr = factory.addNode(nodeB);
-
-        vm.prank(nodeA);
-        stakingOps.approveStaker(opAAddr);
-        vm.prank(nodeB);
-        stakingOps.approveStaker(opBAddr);
+        _approvePredictedStaker(nodeA);
+        _approvePredictedStaker(nodeB);
+        factory.addNode(nodeA);
+        factory.addNode(nodeB);
 
         stakeToken.mint(userA, 2_000_000e6);
         stakeToken.mint(userB, 2_000_000e6);
@@ -376,12 +379,9 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         assertEq(stakeToken.balanceOf(address(factory)) - factoryBalBefore, 450e6);
     }
 
-
     function test_pendingRewards_returnsCorrectAmount() public {
-        address opAddr = factory.addNode(nodeA);
-
-        vm.prank(nodeA);
-        stakingOps.approveStaker(opAddr);
+        _approvePredictedStaker(nodeA);
+        factory.addNode(nodeA);
 
         stakeToken.mint(userA, 2_000_000e6);
         vm.prank(userA);
@@ -395,10 +395,8 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     }
 
     function test_fullLifecycle_stakeUnstakeWithdraw() public {
-        address opAAddr = factory.addNode(nodeA);
-
-        vm.prank(nodeA);
-        stakingOps.approveStaker(opAAddr);
+        _approvePredictedStaker(nodeA);
+        factory.addNode(nodeA);
 
         stakeToken.mint(userA, 5_000_000e6);
         vm.prank(userA);

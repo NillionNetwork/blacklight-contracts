@@ -26,6 +26,8 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     error InsufficientFees();
     error FeeTooHigh();
     error TokenMismatch();
+    error StakerNotPreapproved();
+    error StakingOperatorsQueryFailed();
 
     // ──────────────────────────────────────────────
     // Events
@@ -71,13 +73,9 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     address[] private _freeNodes;
     mapping(address => uint256) private _freeNodeIndexPlusOne; // 1-indexed; 0 = not free
 
-    constructor(
-        address owner_,
-        address stakingOperators_,
-        address rewardPolicy_,
-        address token_,
-        uint256 minStake_
-    ) Ownable(owner_) {
+    constructor(address owner_, address stakingOperators_, address rewardPolicy_, address token_, uint256 minStake_)
+        Ownable(owner_)
+    {
         if (stakingOperators_ == address(0)) revert ZeroAddress();
         if (rewardPolicy_ == address(0)) revert ZeroAddress();
         if (token_ == address(0)) revert ZeroAddress();
@@ -174,10 +172,18 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         if (stakingOperators == address(0) || token == address(0) || rewardPolicy == address(0)) {
             revert FactoryNotConfigured();
         }
+        operatorAddr = predictNodeOperatorAddress(node);
+        if (_approvedStaker(node) != operatorAddr) revert StakerNotPreapproved();
 
-        NodeOperator operator = new NodeOperator(
-            address(this), minStake, node, stakingOperators, rewardPolicy, token,
-            defaultWithdrawFeeBps, defaultRestakeFeeBps
+        NodeOperator operator = new NodeOperator{salt: _nodeOperatorSalt(node)}(
+            address(this),
+            minStake,
+            node,
+            stakingOperators,
+            rewardPolicy,
+            token,
+            defaultWithdrawFeeBps,
+            defaultRestakeFeeBps
         );
 
         operatorAddr = address(operator);
@@ -205,7 +211,6 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
             }
         }
     }
-
 
     // ──────────────────────────────────────────────
     // User operations (auto-binding + token relay)
@@ -286,7 +291,6 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         }
     }
 
-
     // ──────────────────────────────────────────────
     // View functions
     // ──────────────────────────────────────────────
@@ -330,10 +334,43 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         return _allOperators[idxPlusOne - 1];
     }
 
+    function predictNodeOperatorAddress(address node) public view returns (address) {
+        bytes32 salt = _nodeOperatorSalt(node);
+        bytes32 initCodeHash = keccak256(_nodeOperatorInitCode(node));
+        bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, initCodeHash));
+        return address(uint160(uint256(hash)));
+    }
+
     // ──────────────────────────────────────────────
     // Internal
     // ──────────────────────────────────────────────
 
+    function _nodeOperatorSalt(address node) internal pure returns (bytes32) {
+        return keccak256(abi.encode(node));
+    }
+
+    function _nodeOperatorInitCode(address node) internal view returns (bytes memory) {
+        return abi.encodePacked(
+            type(NodeOperator).creationCode,
+            abi.encode(
+                address(this),
+                minStake,
+                node,
+                stakingOperators,
+                rewardPolicy,
+                token,
+                defaultWithdrawFeeBps,
+                defaultRestakeFeeBps
+            )
+        );
+    }
+
+    function _approvedStaker(address node) internal view returns (address approved) {
+        (bool ok, bytes memory data) =
+            stakingOperators.staticcall(abi.encodeWithSignature("approvedStaker(address)", node));
+        if (!ok || data.length < 32) revert StakingOperatorsQueryFailed();
+        approved = abi.decode(data, (address));
+    }
 
     /// @dev Pops the last free node (LIFO) and maps it to `user`.
     function _bindFreeNode(address user) internal returns (address operatorAddr) {
@@ -351,5 +388,4 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         userToNode[user] = node;
         nodeToUser[node] = user;
     }
-
 }

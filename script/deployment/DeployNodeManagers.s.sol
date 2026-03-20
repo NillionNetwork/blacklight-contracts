@@ -50,6 +50,7 @@ contract DeployNodeManagers is Script {
             require(rewardPolicyAddr != address(0), "REWARD_POLICY required when DEPLOY_NODE_FACTORY=true");
         }
 
+        // Step 1: Deploy factory and derive managed node addresses
         vm.startBroadcast(deployerPrivateKey);
 
         uint256[] memory managedNodeKeys;
@@ -61,15 +62,25 @@ contract DeployNodeManagers is Script {
             TESTToken(stakeTokenAddr)
         );
 
-        BlacklightNodeOpsLib.fundExtraNodes(vm, deployNodeFactory, TESTToken(stakeTokenAddr));
-
         vm.stopBroadcast();
 
+        // Step 2: Each node pre-approves its predicted operator (required before addNodes)
         if (deployNodeFactory) {
             BlacklightNodeOpsLib.approveManagedNodeStakers(
                 vm, out.managedNodes, managedNodeKeys, out.nodeFactory, StakingOperators(stakingOpsAddr)
             );
         }
+
+        // Step 3: Add nodes (now that stakers are pre-approved) and fund extras
+        vm.startBroadcast(deployerPrivateKey);
+
+        if (deployNodeFactory) {
+            BlacklightNodeOpsLib.addManagedNodes(out.nodeFactory, out.managedNodes);
+        }
+
+        BlacklightNodeOpsLib.fundExtraNodes(vm, deployNodeFactory, TESTToken(stakeTokenAddr));
+
+        vm.stopBroadcast();
 
         out.unmanagedNodes = _deriveUnmanagedNodes();
         out.nodeManagers = new address[](out.managedNodes.length);
