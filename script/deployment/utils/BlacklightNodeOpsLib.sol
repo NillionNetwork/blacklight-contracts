@@ -42,8 +42,6 @@ library BlacklightNodeOpsLib {
             managedNodes[i] = vm.addr(key);
         }
 
-        nodeFactory.addNodes(managedNodes);
-
         for (uint256 i = 0; i < numManagedNodes; i++) {
             (bool ok,) = managedNodes[i].call{value: 0.01 ether}("");
             require(ok, "ETH transfer failed");
@@ -79,9 +77,13 @@ library BlacklightNodeOpsLib {
         StakingOperators stakingOps
     ) internal {
         for (uint256 i = 0; i < managedNodes.length; i++) {
-            address nodeOp = nodeFactory.nodeToOperator(managedNodes[i]);
+            address predictedOp = nodeFactory.predictNodeOperatorAddress(managedNodes[i]);
             vm.broadcast(managedNodeKeys[i]);
-            stakingOps.approveStaker(nodeOp);
+            stakingOps.approveStaker(predictedOp);
         }
+    }
+
+    function addManagedNodes(NodeOperatorFactory nodeFactory, address[] memory managedNodes) internal {
+        nodeFactory.addNodes(managedNodes);
     }
 }
