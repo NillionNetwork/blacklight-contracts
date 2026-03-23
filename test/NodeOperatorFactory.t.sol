@@ -286,9 +286,9 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         vm.prank(userA);
         factory.withdrawUnstaked();
 
-        // Behavior is preserved (no reset on withdrawal)
+        // Full unstake switches to WithdrawToUser (NST-5 fix)
         assertEq(
-            uint256(NodeOperator(opAddr).rewardBehavior()), uint256(uint8(INodeOperator.RewardBehavior.AutoRestake))
+            uint256(NodeOperator(opAddr).rewardBehavior()), uint256(uint8(INodeOperator.RewardBehavior.WithdrawToUser))
         );
     }
 
@@ -431,6 +431,7 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     // ──────────────────────────────────────────────
 
     function test_migrateOperator_transfersOwnership() public {
+        _approvePredictedStaker(nodeA);
         address opAddr = factory.addNode(nodeA);
         address newFactory = address(0xFAC2);
 
@@ -439,6 +440,7 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     }
 
     function test_migrateOperator_revertsForNonOwner() public {
+        _approvePredictedStaker(nodeA);
         address opAddr = factory.addNode(nodeA);
         vm.prank(userA);
         vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", userA));
@@ -451,6 +453,7 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     }
 
     function test_migrateOperator_revertsForZeroNewOwner() public {
+        _approvePredictedStaker(nodeA);
         address opAddr = factory.addNode(nodeA);
         vm.expectRevert(NodeOperatorFactory.ZeroAddress.selector);
         factory.migrateOperator(opAddr, address(0));
@@ -461,6 +464,7 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     // ──────────────────────────────────────────────
 
     function test_rescueOperatorTokens_recoversStrandedToken() public {
+        _approvePredictedStaker(nodeA);
         address opAddr = factory.addNode(nodeA);
         MockERC20 oldToken = new MockERC20("OLD", "OLD");
         oldToken.mint(opAddr, 500e6);
@@ -470,6 +474,7 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     }
 
     function test_rescueOperatorTokens_revertsForActiveToken() public {
+        _approvePredictedStaker(nodeA);
         address opAddr = factory.addNode(nodeA);
         stakeToken.mint(opAddr, 100e6);
 
@@ -516,13 +521,10 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     // ──────────────────────────────────────────────
 
     function test_harvestAllRewards_emitsHarvestFailedOnBrokenOperator() public {
+        _approvePredictedStaker(nodeA);
         address opAAddr = factory.addNode(nodeA);
+        _approvePredictedStaker(nodeB);
         address opBAddr = factory.addNode(nodeB);
-
-        vm.prank(nodeA);
-        stakingOps.approveStaker(opAAddr);
-        vm.prank(nodeB);
-        stakingOps.approveStaker(opBAddr);
 
         // Bind userA to opA and stake
         stakeToken.mint(userA, 2_000_000e6);
