@@ -259,9 +259,14 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
             if (approved != address(0)) approvedStaker[operator] = address(0);
         } else if (currentStaker != msg.sender) revert DifferentStaker();
 
+
+        uint256 _balanceBefore = _stakingToken.balanceOf(address(this));
         _stakingToken.safeTransferFrom(msg.sender, address(this), amount);
-        _operatorStake[operator] += amount;
-        _totalStaked += amount;
+        uint256 _balanceAfter = _stakingToken.balanceOf(address(this));
+        uint256 final_amount = _balanceAfter - _balanceBefore;
+
+        _operatorStake[operator] += final_amount;
+        _totalStaked += final_amount;
 
         _writeCheckpoint(operator, _operatorStake[operator]);
         _setActiveInSet(operator, _computeIsActive(operator));

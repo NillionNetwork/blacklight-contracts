@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 import "forge-std/Test.sol";
 
 import "../src/mocks/MockERC20.sol";
+import "../src/mocks/MockFeeOnTransferERC20.sol";
 import "../src/ProtocolConfig.sol";
 import "../src/StakingOperators.sol";
 
@@ -393,5 +394,122 @@ contract StakingOperatorsTest is Test {
         vm.prank(admin);
         vm.expectRevert(StakingOperators.InvalidAddress.selector);
         stakingOps.setHeartbeatManager(address(0));
+    }
+}
+
+contract StakingOperatorsFeeOnTransferTest is Test {
+    MockFeeOnTransferERC20 feeToken;
+    ProtocolConfig config;
+    StakingOperators stakingOps;
+
+    address admin = address(0xA11CE);
+    uint256 constant FEE_BPS = 500; // 5% fee
+
+    function setUp() public {
+        feeToken = new MockFeeOnTransferERC20("FEE", "FEE", FEE_BPS);
+
+        vm.startPrank(admin);
+        stakingOps = new StakingOperators(IERC20(address(feeToken)), admin, 1 days);
+        vm.stopPrank();
+
+        config = new ProtocolConfig(
+            address(this),
+            address(stakingOps),
+            address(this),
+            address(this),
+            address(this),
+            2,
+            0,
+            5,
+            0,
+            1,
+            1,
+            10,
+            10,
+            100,
+            1e18
+        );
+
+        vm.prank(admin);
+        stakingOps.setProtocolConfig(config);
+    }
+
+    function test_stakeTo_feeOnTransfer_accountsActualReceived() public {
+        address operator = address(0xB0B);
+        uint256 stakeAmount = 2e18;
+        uint256 expectedFee = (stakeAmount * FEE_BPS) / 10_000; // 0.1e18
+        uint256 expectedStake = stakeAmount - expectedFee;       // 1.9e18
+
+        feeToken.mint(operator, stakeAmount);
+
+        vm.startPrank(operator);
+        feeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(operator, stakeAmount);
+        vm.stopPrank();
+
+        // Accounting matches actual tokens held
+        assertEq(stakingOps.stakeOf(operator), expectedStake);
+        assertEq(feeToken.balanceOf(address(stakingOps)), expectedStake);
+    }
+
+    function test_stakeTo_feeOnTransfer_totalStakedMatchesBalance() public {
+        address op1 = address(0xB0B1);
+        address op2 = address(0xB0B2);
+
+        feeToken.mint(op1, 2e18);
+        feeToken.mint(op2, 2e18);
+
+        vm.startPrank(op1);
+        feeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(op1, 2e18);
+        vm.stopPrank();
+
+        vm.startPrank(op2);
+        feeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(op2, 2e18);
+        vm.stopPrank();
+
+        // totalStaked should equal actual contract balance
+        assertEq(stakingOps.totalStaked(), feeToken.balanceOf(address(stakingOps)));
+    }
+
+    function test_stakeTo_feeOnTransfer_noPhantomBalance() public {
+        address operator = address(0xB0B);
+        feeToken.mint(operator, 4e18);
+
+        vm.startPrank(operator);
+        feeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(operator, 2e18);
+        stakingOps.stakeTo(operator, 2e18);
+        vm.stopPrank();
+
+        uint256 contractBalance = feeToken.balanceOf(address(stakingOps));
+        uint256 recordedStake = stakingOps.stakeOf(operator);
+
+        // No phantom balance: recorded stake must not exceed actual tokens
+        assertEq(recordedStake, contractBalance);
+        assertLe(recordedStake, contractBalance);
+    }
+
+    function test_stakeTo_feeOnTransfer_fullCycleWithdraw() public {
+        address operator = address(0xB0B);
+        uint256 stakeAmount = 2e18;
+        feeToken.mint(operator, stakeAmount);
+
+        vm.startPrank(operator);
+        feeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(operator, stakeAmount);
+
+        uint256 actualStake = stakingOps.stakeOf(operator);
+
+        // Unstake the full recorded amount
+        stakingOps.requestUnstake(operator, actualStake);
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Withdraw should not revert — contract holds enough tokens
+        stakingOps.withdrawUnstaked(operator);
+        vm.stopPrank();
+
+        assertEq(stakingOps.stakeOf(operator), 0);
     }
 }
