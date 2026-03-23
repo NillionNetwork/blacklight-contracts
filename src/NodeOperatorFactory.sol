@@ -160,6 +160,13 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         op.setMinStake(minStake);
     }
 
+    /// @notice Rescues stranded ERC-20 tokens from a NodeOperator (e.g. after token migration).
+    function rescueOperatorTokens(address operatorAddr, IERC20 rescueToken, address to, uint256 amount) external onlyOwner {
+        if (operatorAddr == address(0)) revert ZeroAddress();
+        if (operatorToNode[operatorAddr] == address(0)) revert InvalidNodeOperator();
+        NodeOperator(operatorAddr).rescueTokens(rescueToken, to, amount);
+    }
+
     /// @notice Withdraws token fees accumulated from NodeOperator harvest calls.
     function withdrawFees(uint256 amount, address to) external onlyOwner {
         if (to == address(0)) revert ZeroAddress();

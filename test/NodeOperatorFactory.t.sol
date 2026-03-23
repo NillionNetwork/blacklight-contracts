@@ -455,4 +455,30 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         vm.expectRevert(NodeOperatorFactory.ZeroAddress.selector);
         factory.migrateOperator(opAddr, address(0));
     }
+
+    // ──────────────────────────────────────────────
+    // NST-10: Token rescue via factory
+    // ──────────────────────────────────────────────
+
+    function test_rescueOperatorTokens_recoversStrandedToken() public {
+        address opAddr = factory.addNode(nodeA);
+        MockERC20 oldToken = new MockERC20("OLD", "OLD");
+        oldToken.mint(opAddr, 500e6);
+
+        factory.rescueOperatorTokens(opAddr, IERC20(address(oldToken)), address(this), 500e6);
+        assertEq(oldToken.balanceOf(address(this)), 500e6);
+    }
+
+    function test_rescueOperatorTokens_revertsForActiveToken() public {
+        address opAddr = factory.addNode(nodeA);
+        stakeToken.mint(opAddr, 100e6);
+
+        vm.expectRevert(NodeOperator.CannotRescueActiveToken.selector);
+        factory.rescueOperatorTokens(opAddr, IERC20(address(stakeToken)), address(this), 100e6);
+    }
+
+    function test_rescueOperatorTokens_revertsForInvalidOperator() public {
+        vm.expectRevert(NodeOperatorFactory.InvalidNodeOperator.selector);
+        factory.rescueOperatorTokens(address(0xDEAD), IERC20(address(0x1)), address(this), 100);
+    }
 }
