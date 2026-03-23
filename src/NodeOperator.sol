@@ -53,7 +53,7 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     // Constants
     // ──────────────────────────────────────────────
 
-    uint256 public constant MAX_FEE_BPS = 10000; // hard cap: 100%
+    uint256 public constant MAX_FEE_BPS = 5000; // hard cap: 50%
 
     // ──────────────────────────────────────────────
     // Configurable limits

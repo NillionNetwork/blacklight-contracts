@@ -330,11 +330,14 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
     // ──────────────────────────────────────────────
 
     function test_setDefaultModeFeeBps_revertsAboveMaxCap() public {
-        vm.expectRevert(NodeOperatorFactory.FeeTooHigh.selector);
-        factory.setDefaultModeFeeBps(10001, 0);
+        // 50% is the max (5000 bps)
+        factory.setDefaultModeFeeBps(5000, 5000);
 
         vm.expectRevert(NodeOperatorFactory.FeeTooHigh.selector);
-        factory.setDefaultModeFeeBps(0, 10001);
+        factory.setDefaultModeFeeBps(5001, 0);
+
+        vm.expectRevert(NodeOperatorFactory.FeeTooHigh.selector);
+        factory.setDefaultModeFeeBps(0, 5001);
     }
 
     function test_harvestAllRewards_harvestsAllAssignedNodes() public {

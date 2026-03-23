@@ -221,11 +221,47 @@ contract NodeOperatorTest is BlacklightFixture {
     }
 
     function test_setModeFeeBps_revertsAboveMaxCap() public {
+        // 50% is the max (5000 bps)
+        nodeOp.setModeFeeBps(5000, 5000);
+        assertEq(nodeOp.withdrawFeeBps(), 5000);
+        assertEq(nodeOp.restakeFeeBps(), 5000);
+
+        // 50% + 1 bps reverts
         vm.expectRevert(NodeOperator.FeeTooHigh.selector);
-        nodeOp.setModeFeeBps(10001, 0);
+        nodeOp.setModeFeeBps(5001, 0);
 
         vm.expectRevert(NodeOperator.FeeTooHigh.selector);
-        nodeOp.setModeFeeBps(0, 10001);
+        nodeOp.setModeFeeBps(0, 5001);
+    }
+
+    function test_constructorRevertsIfFeeAboveCap() public {
+        vm.expectRevert(NodeOperator.FeeTooHigh.selector);
+        new NodeOperator(
+            address(this), STAKE_AMOUNT, node1,
+            address(stakingOps), address(0), address(stakeToken),
+            5001, 0
+        );
+
+        vm.expectRevert(NodeOperator.FeeTooHigh.selector);
+        new NodeOperator(
+            address(this), STAKE_AMOUNT, node1,
+            address(stakingOps), address(0), address(stakeToken),
+            0, 5001
+        );
+    }
+
+    function test_harvestAtMaxFee_userGetsHalf() public {
+        nodeOp.assignUser(user1);
+        _stakeViaFactory(STAKE_AMOUNT);
+        nodeOp.setModeFeeBps(5000, 0); // 50% withdraw fee
+        nodeOp.setRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
+
+        stakeToken.mint(address(nodeOp), 1_000e6);
+        uint256 ownerBefore = stakeToken.balanceOf(address(this));
+        nodeOp.harvestRewards();
+
+        assertEq(stakeToken.balanceOf(user1), 500e6);
+        assertEq(stakeToken.balanceOf(address(this)) - ownerBefore, 500e6);
     }
 
     // ──────────────────────────────────────────────
