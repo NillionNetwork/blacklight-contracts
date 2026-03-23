@@ -40,6 +40,9 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     event FeesWithdrawn(uint256 amount, address indexed to);
     event MinStakeUpdated(uint256 oldMinStake, uint256 newMinStake);
     event HarvestFailed(address indexed operatorAddr, bytes reason);
+    event DependenciesUpdated(address oldStaking, address newStaking, address oldReward, address newReward, address oldToken, address newToken);
+    event DefaultModeFeeBpsUpdated(uint256 oldWithdrawBps, uint256 newWithdrawBps, uint256 oldRestakeBps, uint256 newRestakeBps);
+    event OperatorConfigSynced(address indexed operatorAddr);
 
     // ──────────────────────────────────────────────
     // Shared configuration
@@ -74,6 +77,10 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     address[] private _freeNodes;
     mapping(address => uint256) private _freeNodeIndexPlusOne; // 1-indexed; 0 = not free
 
+    function renounceOwnership() public pure override {
+        revert("disabled");
+    }
+
     constructor(address owner_, address stakingOperators_, address rewardPolicy_, address token_, uint256 minStake_)
         Ownable(owner_)
     {
@@ -97,6 +104,7 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         if (stakingOperators_ == address(0) || rewardPolicy_ == address(0) || token_ == address(0)) revert ZeroAddress();
         if (IStakingOperators(stakingOperators_).stakingToken() != token_) revert TokenMismatch();
         if (IRewardPolicyExtended(rewardPolicy_).rewardToken() != token_) revert TokenMismatch();
+        emit DependenciesUpdated(stakingOperators, stakingOperators_, rewardPolicy, rewardPolicy_, token, token_);
         stakingOperators = stakingOperators_;
         rewardPolicy = rewardPolicy_;
         token = token_;
@@ -104,6 +112,7 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
 
     function setDefaultModeFeeBps(uint256 withdrawBps, uint256 restakeBps) external onlyOwner {
         if (withdrawBps > MAX_FEE_BPS || restakeBps > MAX_FEE_BPS) revert FeeTooHigh();
+        emit DefaultModeFeeBpsUpdated(defaultWithdrawFeeBps, withdrawBps, defaultRestakeFeeBps, restakeBps);
         defaultWithdrawFeeBps = withdrawBps;
         defaultRestakeFeeBps = restakeBps;
     }
@@ -127,15 +136,18 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         NodeOperator(operatorAddr).transferOwnership(newOwner);
     }
 
-    /// @notice Pushes the factory's current token/operator addresses to a single NodeOperator.
-    ///         Use after updating factory config to keep an existing operator in sync.
+    /// @notice Pushes the factory's current dependencies (stakingOperators, rewardPolicy,
+    ///         token, minStake) to a single NodeOperator. Fee rates (withdrawFeeBps,
+    ///         restakeFeeBps) are intentionally per-operator and excluded from sync;
+    ///         use setOperatorModeFeeBps() to update fees on individual operators.
     function syncOperatorConfig(address operatorAddr) external onlyOwner {
         if (operatorAddr == address(0)) revert ZeroAddress();
         if (operatorToNode[operatorAddr] == address(0)) revert InvalidNodeOperator();
         _syncOperatorConfig(operatorAddr);
     }
 
-    /// @notice Pushes the factory's current config to every registered NodeOperator.
+    /// @notice Pushes the factory's current dependencies to every registered NodeOperator.
+    /// @dev Fee rates are intentionally excluded; see syncOperatorConfig().
     function syncAllOperatorConfigs() external onlyOwner {
         uint256 len = _allOperators.length;
         for (uint256 i; i < len;) {
@@ -146,12 +158,15 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         }
     }
 
+    /// @dev Syncs dependencies only (stakingOperators, rewardPolicy, token, minStake).
+    ///      Fee rates are per-operator and intentionally excluded from synchronization.
     function _syncOperatorConfig(address operatorAddr) internal {
         NodeOperator op = NodeOperator(operatorAddr);
         if (stakingOperators != address(0)) op.setStakingOperators(stakingOperators);
         if (rewardPolicy != address(0)) op.setRewardPolicy(rewardPolicy);
         if (token != address(0)) op.setToken(token);
         op.setMinStake(minStake);
+        emit OperatorConfigSynced(operatorAddr);
     }
 
     /// @notice Rescues stranded ERC-20 tokens from a NodeOperator (e.g. after token migration).
