@@ -48,7 +48,7 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     uint256 public defaultWithdrawFeeBps = 3000;
     uint256 public defaultRestakeFeeBps = 1500;
     uint256 public minStake;
-    uint256 public constant MAX_FEE_BPS = 10000; // hard cap: 100%
+    uint256 public constant MAX_FEE_BPS = 5000; // hard cap: 50%
 
     // ──────────────────────────────────────────────
     // Registry state
