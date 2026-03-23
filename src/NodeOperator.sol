@@ -24,6 +24,7 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     error FeeTooHigh();
     error InvalidUserAssignment();
     error TokenMismatch();
+    error CannotRescueActiveToken();
 
     // ──────────────────────────────────────────────
     // Events
@@ -46,6 +47,7 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     event RewardPolicyUpdated(address oldAddress, address newAddress);
     event TokenUpdated(address oldAddress, address newAddress);
     event MinStakeUpdated(uint256 oldMinStake, uint256 newMinStake);
+    event TokensRescued(address indexed tokenAddress, address indexed to, uint256 amount);
 
     // ──────────────────────────────────────────────
     // Constants
@@ -154,6 +156,16 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     function setMinStake(uint256 newMinStake) external onlyOwner {
         emit MinStakeUpdated(minStake, newMinStake);
         minStake = newMinStake;
+    }
+
+    /// @notice Rescues ERC-20 tokens stranded in this contract after a token migration.
+    /// @dev Cannot rescue the currently active token to prevent interference with staking flows.
+    function rescueTokens(IERC20 rescueToken, address to, uint256 amount) external onlyOwner {
+        if (address(rescueToken) == address(token)) revert CannotRescueActiveToken();
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
+        rescueToken.safeTransfer(to, amount);
+        emit TokensRescued(address(rescueToken), to, amount);
     }
 
     // ──────────────────────────────────────────────
