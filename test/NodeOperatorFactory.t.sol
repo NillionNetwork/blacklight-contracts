@@ -425,4 +425,34 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         assertEq(factory.userToNode(userA), nodeA);
         assertEq(stakeToken.balanceOf(userA), 5_000_000e6);
     }
+
+    // ──────────────────────────────────────────────
+    // NST-9: Operator ownership migration
+    // ──────────────────────────────────────────────
+
+    function test_migrateOperator_transfersOwnership() public {
+        address opAddr = factory.addNode(nodeA);
+        address newFactory = address(0xFAC2);
+
+        factory.migrateOperator(opAddr, newFactory);
+        assertEq(NodeOperator(opAddr).owner(), newFactory);
+    }
+
+    function test_migrateOperator_revertsForNonOwner() public {
+        address opAddr = factory.addNode(nodeA);
+        vm.prank(userA);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", userA));
+        factory.migrateOperator(opAddr, address(0xFAC2));
+    }
+
+    function test_migrateOperator_revertsForInvalidOperator() public {
+        vm.expectRevert(NodeOperatorFactory.InvalidNodeOperator.selector);
+        factory.migrateOperator(address(0xDEAD), address(0xFAC2));
+    }
+
+    function test_migrateOperator_revertsForZeroNewOwner() public {
+        address opAddr = factory.addNode(nodeA);
+        vm.expectRevert(NodeOperatorFactory.ZeroAddress.selector);
+        factory.migrateOperator(opAddr, address(0));
+    }
 }

@@ -125,6 +125,14 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         minStake = newMinStake;
     }
 
+    /// @notice Transfers ownership of a NodeOperator to a new address (e.g. a replacement factory).
+    function migrateOperator(address operatorAddr, address newOwner) external onlyOwner {
+        if (operatorAddr == address(0)) revert ZeroAddress();
+        if (newOwner == address(0)) revert ZeroAddress();
+        if (operatorToNode[operatorAddr] == address(0)) revert InvalidNodeOperator();
+        NodeOperator(operatorAddr).transferOwnership(newOwner);
+    }
+
     /// @notice Pushes the factory's current token/operator addresses to a single NodeOperator.
     ///         Use after updating factory config to keep an existing operator in sync.
     function syncOperatorConfig(address operatorAddr) external onlyOwner {
