@@ -25,6 +25,7 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     error InvalidUserAssignment();
     error TokenMismatch();
     error CannotRescueActiveToken();
+    error NodeJailed();
 
     // ──────────────────────────────────────────────
     // Events
@@ -198,6 +199,7 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     function stake() external override nonReentrant onlyOwner {
         if (nodeUser == address(0)) revert ZeroAddress();
         _ensureStakeConfigured();
+        if (stakingOperators.isJailed(nodeAddress)) revert NodeJailed();
 
         // Use actual balance to support fee-on-transfer tokens
         uint256 available = token.balanceOf(address(this));
@@ -337,6 +339,13 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         }
 
         _ensureStakeConfigured();
+
+        if (stakingOperators.isJailed(nodeAddress)) {
+            // Jailed node cannot earn rewards; send to user instead of restaking
+            if (net != 0) token.safeTransfer(nodeUser, net);
+            emit RewardsHarvested(net, fee);
+            return;
+        }
 
         if (net != 0) {
             token.forceApprove(address(stakingOperators), net);
