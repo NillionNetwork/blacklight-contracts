@@ -290,6 +290,60 @@ contract NodeOperatorTest is BlacklightFixture {
         assertEq(uint256(nodeOp.rewardBehavior()), uint256(uint8(INodeOperator.RewardBehavior.WithdrawToUser)));
     }
 
+    // ──────────────────────────────────────────────
+    // NST-7: Token migration rescue
+    // ──────────────────────────────────────────────
+
+    function test_rescueTokens_recoversStrandedToken() public {
+        MockERC20 oldToken = new MockERC20("OLD", "OLD");
+        oldToken.mint(address(nodeOp), 500e6);
+
+        nodeOp.rescueTokens(IERC20(address(oldToken)), address(this), 500e6);
+        assertEq(oldToken.balanceOf(address(this)), 500e6);
+        assertEq(oldToken.balanceOf(address(nodeOp)), 0);
+    }
+
+    function test_rescueTokens_revertsForActiveToken() public {
+        stakeToken.mint(address(nodeOp), 100e6);
+
+        vm.expectRevert(NodeOperator.CannotRescueActiveToken.selector);
+        nodeOp.rescueTokens(IERC20(address(stakeToken)), address(this), 100e6);
+    }
+
+    function test_rescueTokens_revertsForZeroAddress() public {
+        MockERC20 oldToken = new MockERC20("OLD", "OLD");
+        oldToken.mint(address(nodeOp), 100e6);
+
+        vm.expectRevert(NodeOperator.ZeroAddress.selector);
+        nodeOp.rescueTokens(IERC20(address(oldToken)), address(0), 100e6);
+    }
+
+    function test_rescueTokens_revertsForZeroAmount() public {
+        MockERC20 oldToken = new MockERC20("OLD", "OLD");
+
+        vm.expectRevert(NodeOperator.ZeroAmount.selector);
+        nodeOp.rescueTokens(IERC20(address(oldToken)), address(this), 0);
+    }
+
+    function test_rescueTokens_revertsForNonOwner() public {
+        MockERC20 oldToken = new MockERC20("OLD", "OLD");
+        oldToken.mint(address(nodeOp), 100e6);
+
+        address outsider = address(0xDEAD);
+        vm.prank(outsider);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", outsider));
+        nodeOp.rescueTokens(IERC20(address(oldToken)), outsider, 100e6);
+    }
+
+    function test_rescueTokens_partialRescue() public {
+        MockERC20 oldToken = new MockERC20("OLD", "OLD");
+        oldToken.mint(address(nodeOp), 500e6);
+
+        nodeOp.rescueTokens(IERC20(address(oldToken)), address(this), 200e6);
+        assertEq(oldToken.balanceOf(address(nodeOp)), 300e6);
+        assertEq(oldToken.balanceOf(address(this)), 200e6);
+    }
+
     function test_harvestRevertsIfRewardModulesUnset() public {
         NodeOperator fresh = new NodeOperator(
             address(this),
