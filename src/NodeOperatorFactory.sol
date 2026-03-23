@@ -39,6 +39,7 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
 
     event FeesWithdrawn(uint256 amount, address indexed to);
     event MinStakeUpdated(uint256 oldMinStake, uint256 newMinStake);
+    event HarvestFailed(address indexed operatorAddr, bytes reason);
 
     // ──────────────────────────────────────────────
     // Shared configuration
@@ -291,8 +292,9 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         uint256 end = offset + limit;
         if (end > total) end = total;
         for (uint256 i = offset; i < end;) {
-            // solhint-disable-next-line no-empty-blocks
-            try INodeOperator(_allOperators[i]).harvestRewards() {} catch {}
+            try INodeOperator(_allOperators[i]).harvestRewards() {} catch (bytes memory reason) {
+                emit HarvestFailed(_allOperators[i], reason);
+            }
             unchecked {
                 ++i;
             }

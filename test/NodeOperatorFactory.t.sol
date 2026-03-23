@@ -510,4 +510,31 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         vm.expectRevert(NodeOperatorFactory.ZeroAddress.selector);
         factory.setDependencies(address(0), address(sameTokenRewardPolicy), address(stakeToken));
     }
+
+    // ──────────────────────────────────────────────
+    // NST-18: Batch harvest failure observability
+    // ──────────────────────────────────────────────
+
+    function test_harvestAllRewards_emitsHarvestFailedOnBrokenOperator() public {
+        address opAAddr = factory.addNode(nodeA);
+        address opBAddr = factory.addNode(nodeB);
+
+        vm.prank(nodeA);
+        stakingOps.approveStaker(opAAddr);
+        vm.prank(nodeB);
+        stakingOps.approveStaker(opBAddr);
+
+        // Bind userA to opA and stake
+        stakeToken.mint(userA, 2_000_000e6);
+        vm.prank(userA);
+        stakeToken.approve(address(factory), type(uint256).max);
+        vm.prank(userA);
+        factory.stake(STAKE_AMOUNT);
+
+        // opB has no user assigned → harvestRewards will revert with ZeroAddress
+        // Expect a HarvestFailed event (don't check topic values, just that it's emitted)
+        vm.expectEmit(false, false, false, false);
+        emit NodeOperatorFactory.HarvestFailed(address(0), "");
+        factory.harvestAllRewards();
+    }
 }
