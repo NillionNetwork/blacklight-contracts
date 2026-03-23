@@ -136,15 +136,18 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         NodeOperator(operatorAddr).transferOwnership(newOwner);
     }
 
-    /// @notice Pushes the factory's current token/operator addresses to a single NodeOperator.
-    ///         Use after updating factory config to keep an existing operator in sync.
+    /// @notice Pushes the factory's current dependencies (stakingOperators, rewardPolicy,
+    ///         token, minStake) to a single NodeOperator. Fee rates (withdrawFeeBps,
+    ///         restakeFeeBps) are intentionally per-operator and excluded from sync;
+    ///         use setOperatorModeFeeBps() to update fees on individual operators.
     function syncOperatorConfig(address operatorAddr) external onlyOwner {
         if (operatorAddr == address(0)) revert ZeroAddress();
         if (operatorToNode[operatorAddr] == address(0)) revert InvalidNodeOperator();
         _syncOperatorConfig(operatorAddr);
     }
 
-    /// @notice Pushes the factory's current config to every registered NodeOperator.
+    /// @notice Pushes the factory's current dependencies to every registered NodeOperator.
+    /// @dev Fee rates are intentionally excluded; see syncOperatorConfig().
     function syncAllOperatorConfigs() external onlyOwner {
         uint256 len = _allOperators.length;
         for (uint256 i; i < len;) {
@@ -155,6 +158,8 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         }
     }
 
+    /// @dev Syncs dependencies only (stakingOperators, rewardPolicy, token, minStake).
+    ///      Fee rates are per-operator and intentionally excluded from synchronization.
     function _syncOperatorConfig(address operatorAddr) internal {
         NodeOperator op = NodeOperator(operatorAddr);
         if (stakingOperators != address(0)) op.setStakingOperators(stakingOperators);
