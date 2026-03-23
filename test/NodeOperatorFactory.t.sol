@@ -539,4 +539,13 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         emit NodeOperatorFactory.HarvestFailed(address(0), "");
         factory.harvestAllRewards();
     }
+
+    // ──────────────────────────────────────────────
+    // S3: renounceOwnership disabled
+    // ──────────────────────────────────────────────
+
+    function test_renounceOwnership_reverts() public {
+        vm.expectRevert("disabled");
+        factory.renounceOwnership();
+    }
 }

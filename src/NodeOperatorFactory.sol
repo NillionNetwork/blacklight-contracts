@@ -77,6 +77,10 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     address[] private _freeNodes;
     mapping(address => uint256) private _freeNodeIndexPlusOne; // 1-indexed; 0 = not free
 
+    function renounceOwnership() public pure override {
+        revert("disabled");
+    }
+
     constructor(address owner_, address stakingOperators_, address rewardPolicy_, address token_, uint256 minStake_)
         Ownable(owner_)
     {
