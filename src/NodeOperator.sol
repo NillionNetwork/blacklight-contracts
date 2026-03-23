@@ -216,6 +216,11 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
 
         stakingOperators.requestUnstake(nodeAddress, amount);
 
+        // If fully exiting, force rewards to withdraw mode
+        if (stakingOperators.stakeOf(nodeAddress) == 0){
+            _rewardBehavior = RewardBehavior.WithdrawToUser;
+        }
+
         emit UnstakeRequested(nodeUser, amount, nodeAddress);
     }
 
@@ -256,6 +261,12 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     }
 
     function setRewardBehavior(RewardBehavior behavior) external override onlyOwner {
+
+        // Prevent re-enabling AutoRestake on a fully-exited operator
+        if (behavior == RewardBehavior.AutoRestake && stakingOperators.stakeOf(nodeAddress) == 0) {
+            revert BelowMinimumStake();
+        }
+
         RewardBehavior oldBehavior = _rewardBehavior;
         _rewardBehavior = behavior;
         emit RewardBehaviorUpdated(nodeUser, uint8(oldBehavior), uint8(behavior));

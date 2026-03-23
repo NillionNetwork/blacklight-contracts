@@ -228,6 +228,68 @@ contract NodeOperatorTest is BlacklightFixture {
         nodeOp.setModeFeeBps(0, 10001);
     }
 
+    // ──────────────────────────────────────────────
+    // NST-5: Auto-restake on fully-exiting operator
+    // ──────────────────────────────────────────────
+
+    function test_fullUnstake_switchesRewardBehaviorToWithdraw() public {
+        nodeOp.assignUser(user1);
+        _stakeViaFactory(STAKE_AMOUNT);
+
+        // Default is AutoRestake
+        assertEq(uint256(nodeOp.rewardBehavior()), uint256(uint8(INodeOperator.RewardBehavior.AutoRestake)));
+
+        // Full unstake should flip to WithdrawToUser
+        nodeOp.requestUnstake(STAKE_AMOUNT);
+        assertEq(uint256(nodeOp.rewardBehavior()), uint256(uint8(INodeOperator.RewardBehavior.WithdrawToUser)));
+    }
+
+    function test_partialUnstake_doesNotChangeRewardBehavior() public {
+        nodeOp.assignUser(user1);
+        _stakeViaFactory(STAKE_AMOUNT * 3);
+
+        nodeOp.requestUnstake(STAKE_AMOUNT);
+
+        // Partial unstake should keep AutoRestake
+        assertEq(uint256(nodeOp.rewardBehavior()), uint256(uint8(INodeOperator.RewardBehavior.AutoRestake)));
+    }
+
+    function test_fullUnstake_harvestSendsRewardsToUser() public {
+        nodeOp.assignUser(user1);
+        _stakeViaFactory(STAKE_AMOUNT);
+
+        // Full unstake
+        nodeOp.requestUnstake(STAKE_AMOUNT);
+
+        // Simulate pending rewards arriving after exit
+        stakeToken.mint(address(nodeOp), 1_000e6);
+        nodeOp.harvestRewards();
+
+        // Rewards should go to user, not be restaked
+        assertEq(stakeToken.balanceOf(user1), 1_000e6);
+        assertEq(stakingOps.stakeOf(node1), 0);
+    }
+
+    function test_setRewardBehavior_revertsAutoRestakeWhenStakeZero() public {
+        nodeOp.assignUser(user1);
+        _stakeViaFactory(STAKE_AMOUNT);
+        nodeOp.requestUnstake(STAKE_AMOUNT);
+
+        // Behavior was flipped to WithdrawToUser; trying to set AutoRestake should revert
+        vm.expectRevert(NodeOperator.BelowMinimumStake.selector);
+        nodeOp.setRewardBehavior(INodeOperator.RewardBehavior.AutoRestake);
+    }
+
+    function test_setRewardBehavior_allowsWithdrawWhenStakeZero() public {
+        nodeOp.assignUser(user1);
+        _stakeViaFactory(STAKE_AMOUNT);
+        nodeOp.requestUnstake(STAKE_AMOUNT);
+
+        // Setting WithdrawToUser when stake is 0 should be allowed
+        nodeOp.setRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
+        assertEq(uint256(nodeOp.rewardBehavior()), uint256(uint8(INodeOperator.RewardBehavior.WithdrawToUser)));
+    }
+
     function test_harvestRevertsIfRewardModulesUnset() public {
         NodeOperator fresh = new NodeOperator(
             address(this),
