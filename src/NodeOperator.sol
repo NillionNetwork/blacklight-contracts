@@ -127,6 +127,7 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
 
     function setStakingOperators(address addr) external onlyOwner {
         if (addr == address(0)) revert ZeroAddress();
+        token.forceApprove(address(stakingOperators), 0);
         emit StakingOperatorsUpdated(address(stakingOperators), addr);
         stakingOperators = IStakingOperators(addr);
     }
@@ -142,6 +143,7 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         if (stakingOperators.stakingToken() != addr) revert TokenMismatch();
         if (rewardPolicy.rewardToken() != addr) revert TokenMismatch();
 
+        token.forceApprove(address(stakingOperators), 0);
         emit TokenUpdated(address(token), addr);
         token = IERC20(addr);
     }
