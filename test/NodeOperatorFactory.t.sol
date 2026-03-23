@@ -481,4 +481,33 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         vm.expectRevert(NodeOperatorFactory.InvalidNodeOperator.selector);
         factory.rescueOperatorTokens(address(0xDEAD), IERC20(address(0x1)), address(this), 100);
     }
+
+    // ──────────────────────────────────────────────
+    // NST-17: Atomic dependency update
+    // ──────────────────────────────────────────────
+
+    function test_setDependencies_updatesAllThree() public {
+        // Deploy new compatible contracts
+        StakingOperators newStaking = new StakingOperators(IERC20(address(stakeToken)), admin, 1 days);
+        RewardPolicy newReward = new RewardPolicy(IERC20(address(stakeToken)), address(manager), governance, 1 days, 0);
+
+        factory.setDependencies(address(newStaking), address(newReward), address(stakeToken));
+
+        assertEq(factory.stakingOperators(), address(newStaking));
+        assertEq(factory.rewardPolicy(), address(newReward));
+        assertEq(factory.token(), address(stakeToken));
+    }
+
+    function test_setDependencies_revertsOnTokenMismatch() public {
+        MockERC20 otherToken = new MockERC20("OTHER", "OTH");
+        RewardPolicy newReward = new RewardPolicy(IERC20(address(otherToken)), address(manager), governance, 1 days, 0);
+
+        vm.expectRevert(NodeOperatorFactory.TokenMismatch.selector);
+        factory.setDependencies(address(stakingOps), address(newReward), address(stakeToken));
+    }
+
+    function test_setDependencies_revertsOnZeroAddress() public {
+        vm.expectRevert(NodeOperatorFactory.ZeroAddress.selector);
+        factory.setDependencies(address(0), address(sameTokenRewardPolicy), address(stakeToken));
+    }
 }

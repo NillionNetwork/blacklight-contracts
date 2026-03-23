@@ -91,21 +91,14 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     // Config setters (onlyOwner)
     // ──────────────────────────────────────────────
 
-    function setStakingOperators(address addr) external onlyOwner {
-        if (addr == address(0)) revert ZeroAddress();
-        stakingOperators = addr;
-    }
-
-    function setRewardPolicy(address addr) external onlyOwner {
-        if (addr == address(0)) revert ZeroAddress();
-        rewardPolicy = addr;
-    }
-
-    function setToken(address addr) external onlyOwner {
-        if (addr == address(0)) revert ZeroAddress();
-        if (IStakingOperators(stakingOperators).stakingToken() != addr) revert TokenMismatch();
-        if (IRewardPolicyExtended(rewardPolicy).rewardToken() != addr) revert TokenMismatch();
-        token = addr;
+    /// @notice Atomically updates the dependency tuple, enforcing token compatibility.
+    function setDependencies(address stakingOperators_, address rewardPolicy_, address token_) external onlyOwner {
+        if (stakingOperators_ == address(0) || rewardPolicy_ == address(0) || token_ == address(0)) revert ZeroAddress();
+        if (IStakingOperators(stakingOperators_).stakingToken() != token_) revert TokenMismatch();
+        if (IRewardPolicyExtended(rewardPolicy_).rewardToken() != token_) revert TokenMismatch();
+        stakingOperators = stakingOperators_;
+        rewardPolicy = rewardPolicy_;
+        token = token_;
     }
 
     function setDefaultModeFeeBps(uint256 withdrawBps, uint256 restakeBps) external onlyOwner {
