@@ -40,6 +40,9 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     event FeesWithdrawn(uint256 amount, address indexed to);
     event MinStakeUpdated(uint256 oldMinStake, uint256 newMinStake);
     event HarvestFailed(address indexed operatorAddr, bytes reason);
+    event DependenciesUpdated(address oldStaking, address newStaking, address oldReward, address newReward, address oldToken, address newToken);
+    event DefaultModeFeeBpsUpdated(uint256 oldWithdrawBps, uint256 newWithdrawBps, uint256 oldRestakeBps, uint256 newRestakeBps);
+    event OperatorConfigSynced(address indexed operatorAddr);
 
     // ──────────────────────────────────────────────
     // Shared configuration
@@ -97,6 +100,7 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         if (stakingOperators_ == address(0) || rewardPolicy_ == address(0) || token_ == address(0)) revert ZeroAddress();
         if (IStakingOperators(stakingOperators_).stakingToken() != token_) revert TokenMismatch();
         if (IRewardPolicyExtended(rewardPolicy_).rewardToken() != token_) revert TokenMismatch();
+        emit DependenciesUpdated(stakingOperators, stakingOperators_, rewardPolicy, rewardPolicy_, token, token_);
         stakingOperators = stakingOperators_;
         rewardPolicy = rewardPolicy_;
         token = token_;
@@ -104,6 +108,7 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
 
     function setDefaultModeFeeBps(uint256 withdrawBps, uint256 restakeBps) external onlyOwner {
         if (withdrawBps > MAX_FEE_BPS || restakeBps > MAX_FEE_BPS) revert FeeTooHigh();
+        emit DefaultModeFeeBpsUpdated(defaultWithdrawFeeBps, withdrawBps, defaultRestakeFeeBps, restakeBps);
         defaultWithdrawFeeBps = withdrawBps;
         defaultRestakeFeeBps = restakeBps;
     }
@@ -152,6 +157,7 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         if (rewardPolicy != address(0)) op.setRewardPolicy(rewardPolicy);
         if (token != address(0)) op.setToken(token);
         op.setMinStake(minStake);
+        emit OperatorConfigSynced(operatorAddr);
     }
 
     /// @notice Rescues stranded ERC-20 tokens from a NodeOperator (e.g. after token migration).
