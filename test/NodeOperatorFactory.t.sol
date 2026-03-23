@@ -286,9 +286,9 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         vm.prank(userA);
         factory.withdrawUnstaked();
 
-        // Behavior is preserved (no reset on withdrawal)
+        // Full unstake switches to WithdrawToUser (NST-5 fix)
         assertEq(
-            uint256(NodeOperator(opAddr).rewardBehavior()), uint256(uint8(INodeOperator.RewardBehavior.AutoRestake))
+            uint256(NodeOperator(opAddr).rewardBehavior()), uint256(uint8(INodeOperator.RewardBehavior.WithdrawToUser))
         );
     }
 
@@ -424,5 +424,119 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         assertEq(factory.userToOperator(userA), firstOp);
         assertEq(factory.userToNode(userA), nodeA);
         assertEq(stakeToken.balanceOf(userA), 5_000_000e6);
+    }
+
+    // ──────────────────────────────────────────────
+    // NST-9: Operator ownership migration
+    // ──────────────────────────────────────────────
+
+    function test_migrateOperator_transfersOwnership() public {
+        _approvePredictedStaker(nodeA);
+        address opAddr = factory.addNode(nodeA);
+        address newFactory = address(0xFAC2);
+
+        factory.migrateOperator(opAddr, newFactory);
+        assertEq(NodeOperator(opAddr).owner(), newFactory);
+    }
+
+    function test_migrateOperator_revertsForNonOwner() public {
+        _approvePredictedStaker(nodeA);
+        address opAddr = factory.addNode(nodeA);
+        vm.prank(userA);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", userA));
+        factory.migrateOperator(opAddr, address(0xFAC2));
+    }
+
+    function test_migrateOperator_revertsForInvalidOperator() public {
+        vm.expectRevert(NodeOperatorFactory.InvalidNodeOperator.selector);
+        factory.migrateOperator(address(0xDEAD), address(0xFAC2));
+    }
+
+    function test_migrateOperator_revertsForZeroNewOwner() public {
+        _approvePredictedStaker(nodeA);
+        address opAddr = factory.addNode(nodeA);
+        vm.expectRevert(NodeOperatorFactory.ZeroAddress.selector);
+        factory.migrateOperator(opAddr, address(0));
+    }
+
+    // ──────────────────────────────────────────────
+    // NST-10: Token rescue via factory
+    // ──────────────────────────────────────────────
+
+    function test_rescueOperatorTokens_recoversStrandedToken() public {
+        _approvePredictedStaker(nodeA);
+        address opAddr = factory.addNode(nodeA);
+        MockERC20 oldToken = new MockERC20("OLD", "OLD");
+        oldToken.mint(opAddr, 500e6);
+
+        factory.rescueOperatorTokens(opAddr, IERC20(address(oldToken)), address(this), 500e6);
+        assertEq(oldToken.balanceOf(address(this)), 500e6);
+    }
+
+    function test_rescueOperatorTokens_revertsForActiveToken() public {
+        _approvePredictedStaker(nodeA);
+        address opAddr = factory.addNode(nodeA);
+        stakeToken.mint(opAddr, 100e6);
+
+        vm.expectRevert(NodeOperator.CannotRescueActiveToken.selector);
+        factory.rescueOperatorTokens(opAddr, IERC20(address(stakeToken)), address(this), 100e6);
+    }
+
+    function test_rescueOperatorTokens_revertsForInvalidOperator() public {
+        vm.expectRevert(NodeOperatorFactory.InvalidNodeOperator.selector);
+        factory.rescueOperatorTokens(address(0xDEAD), IERC20(address(0x1)), address(this), 100);
+    }
+
+    // ──────────────────────────────────────────────
+    // NST-17: Atomic dependency update
+    // ──────────────────────────────────────────────
+
+    function test_setDependencies_updatesAllThree() public {
+        // Deploy new compatible contracts
+        StakingOperators newStaking = new StakingOperators(IERC20(address(stakeToken)), admin, 1 days);
+        RewardPolicy newReward = new RewardPolicy(IERC20(address(stakeToken)), address(manager), governance, 1 days, 0);
+
+        factory.setDependencies(address(newStaking), address(newReward), address(stakeToken));
+
+        assertEq(factory.stakingOperators(), address(newStaking));
+        assertEq(factory.rewardPolicy(), address(newReward));
+        assertEq(factory.token(), address(stakeToken));
+    }
+
+    function test_setDependencies_revertsOnTokenMismatch() public {
+        MockERC20 otherToken = new MockERC20("OTHER", "OTH");
+        RewardPolicy newReward = new RewardPolicy(IERC20(address(otherToken)), address(manager), governance, 1 days, 0);
+
+        vm.expectRevert(NodeOperatorFactory.TokenMismatch.selector);
+        factory.setDependencies(address(stakingOps), address(newReward), address(stakeToken));
+    }
+
+    function test_setDependencies_revertsOnZeroAddress() public {
+        vm.expectRevert(NodeOperatorFactory.ZeroAddress.selector);
+        factory.setDependencies(address(0), address(sameTokenRewardPolicy), address(stakeToken));
+    }
+
+    // ──────────────────────────────────────────────
+    // NST-18: Batch harvest failure observability
+    // ──────────────────────────────────────────────
+
+    function test_harvestAllRewards_emitsHarvestFailedOnBrokenOperator() public {
+        _approvePredictedStaker(nodeA);
+        address opAAddr = factory.addNode(nodeA);
+        _approvePredictedStaker(nodeB);
+        address opBAddr = factory.addNode(nodeB);
+
+        // Bind userA to opA and stake
+        stakeToken.mint(userA, 2_000_000e6);
+        vm.prank(userA);
+        stakeToken.approve(address(factory), type(uint256).max);
+        vm.prank(userA);
+        factory.stake(STAKE_AMOUNT);
+
+        // opB has no user assigned → harvestRewards will revert with ZeroAddress
+        // Expect a HarvestFailed event (don't check topic values, just that it's emitted)
+        vm.expectEmit(false, false, false, false);
+        emit NodeOperatorFactory.HarvestFailed(address(0), "");
+        factory.harvestAllRewards();
     }
 }

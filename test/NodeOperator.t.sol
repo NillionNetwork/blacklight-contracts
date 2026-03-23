@@ -380,6 +380,55 @@ contract NodeOperatorTest is BlacklightFixture {
         assertEq(oldToken.balanceOf(address(this)), 200e6);
     }
 
+    // ──────────────────────────────────────────────
+    // NST-11: Jailed node stake prevention
+    // ──────────────────────────────────────────────
+
+    function _jailNode() internal {
+        vm.startPrank(admin);
+        stakingOps.grantRole(stakingOps.SLASHER_ROLE(), admin);
+        stakingOps.jail(node1, uint64(block.timestamp + 7 days));
+        vm.stopPrank();
+    }
+
+    function test_stake_revertsWhenNodeJailed() public {
+        nodeOp.assignUser(user1);
+        _stakeViaFactory(STAKE_AMOUNT);
+        _jailNode();
+
+        stakeToken.transfer(address(nodeOp), STAKE_AMOUNT);
+        vm.expectRevert(NodeOperator.NodeJailed.selector);
+        nodeOp.stake();
+    }
+
+    function test_harvest_sendsToUserWhenNodeJailedAndAutoRestake() public {
+        nodeOp.assignUser(user1);
+        _stakeViaFactory(STAKE_AMOUNT);
+        _jailNode();
+
+        // Simulate rewards arriving while jailed
+        stakeToken.mint(address(nodeOp), 1_000e6);
+        nodeOp.harvestRewards();
+
+        // Should go to user, not restaked
+        assertEq(stakeToken.balanceOf(user1), 1_000e6);
+        // Stake unchanged
+        assertEq(stakingOps.stakeOf(node1), STAKE_AMOUNT);
+    }
+
+    function test_harvest_withdrawModeUnaffectedByJail() public {
+        nodeOp.assignUser(user1);
+        _stakeViaFactory(STAKE_AMOUNT);
+        nodeOp.setRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
+        _jailNode();
+
+        stakeToken.mint(address(nodeOp), 1_000e6);
+        nodeOp.harvestRewards();
+
+        // WithdrawToUser mode works regardless of jail
+        assertEq(stakeToken.balanceOf(user1), 1_000e6);
+    }
+
     function test_harvestRevertsIfRewardModulesUnset() public {
         NodeOperator fresh = new NodeOperator(
             address(this),

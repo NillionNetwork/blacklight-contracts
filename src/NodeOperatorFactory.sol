@@ -39,6 +39,7 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
 
     event FeesWithdrawn(uint256 amount, address indexed to);
     event MinStakeUpdated(uint256 oldMinStake, uint256 newMinStake);
+    event HarvestFailed(address indexed operatorAddr, bytes reason);
 
     // ──────────────────────────────────────────────
     // Shared configuration
@@ -91,21 +92,14 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     // Config setters (onlyOwner)
     // ──────────────────────────────────────────────
 
-    function setStakingOperators(address addr) external onlyOwner {
-        if (addr == address(0)) revert ZeroAddress();
-        stakingOperators = addr;
-    }
-
-    function setRewardPolicy(address addr) external onlyOwner {
-        if (addr == address(0)) revert ZeroAddress();
-        rewardPolicy = addr;
-    }
-
-    function setToken(address addr) external onlyOwner {
-        if (addr == address(0)) revert ZeroAddress();
-        if (IStakingOperators(stakingOperators).stakingToken() != addr) revert TokenMismatch();
-        if (IRewardPolicyExtended(rewardPolicy).rewardToken() != addr) revert TokenMismatch();
-        token = addr;
+    /// @notice Atomically updates the dependency tuple, enforcing token compatibility.
+    function setDependencies(address stakingOperators_, address rewardPolicy_, address token_) external onlyOwner {
+        if (stakingOperators_ == address(0) || rewardPolicy_ == address(0) || token_ == address(0)) revert ZeroAddress();
+        if (IStakingOperators(stakingOperators_).stakingToken() != token_) revert TokenMismatch();
+        if (IRewardPolicyExtended(rewardPolicy_).rewardToken() != token_) revert TokenMismatch();
+        stakingOperators = stakingOperators_;
+        rewardPolicy = rewardPolicy_;
+        token = token_;
     }
 
     function setDefaultModeFeeBps(uint256 withdrawBps, uint256 restakeBps) external onlyOwner {
@@ -123,6 +117,14 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     function setMinStake(uint256 newMinStake) external onlyOwner {
         emit MinStakeUpdated(minStake, newMinStake);
         minStake = newMinStake;
+    }
+
+    /// @notice Transfers ownership of a NodeOperator to a new address (e.g. a replacement factory).
+    function migrateOperator(address operatorAddr, address newOwner) external onlyOwner {
+        if (operatorAddr == address(0)) revert ZeroAddress();
+        if (newOwner == address(0)) revert ZeroAddress();
+        if (operatorToNode[operatorAddr] == address(0)) revert InvalidNodeOperator();
+        NodeOperator(operatorAddr).transferOwnership(newOwner);
     }
 
     /// @notice Pushes the factory's current token/operator addresses to a single NodeOperator.
@@ -150,6 +152,13 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         if (rewardPolicy != address(0)) op.setRewardPolicy(rewardPolicy);
         if (token != address(0)) op.setToken(token);
         op.setMinStake(minStake);
+    }
+
+    /// @notice Rescues stranded ERC-20 tokens from a NodeOperator (e.g. after token migration).
+    function rescueOperatorTokens(address operatorAddr, IERC20 rescueToken, address to, uint256 amount) external onlyOwner {
+        if (operatorAddr == address(0)) revert ZeroAddress();
+        if (operatorToNode[operatorAddr] == address(0)) revert InvalidNodeOperator();
+        NodeOperator(operatorAddr).rescueTokens(rescueToken, to, amount);
     }
 
     /// @notice Withdraws token fees accumulated from NodeOperator harvest calls.
@@ -283,8 +292,9 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         uint256 end = offset + limit;
         if (end > total) end = total;
         for (uint256 i = offset; i < end;) {
-            // solhint-disable-next-line no-empty-blocks
-            try INodeOperator(_allOperators[i]).harvestRewards() {} catch {}
+            try INodeOperator(_allOperators[i]).harvestRewards() {} catch (bytes memory reason) {
+                emit HarvestFailed(_allOperators[i], reason);
+            }
             unchecked {
                 ++i;
             }
