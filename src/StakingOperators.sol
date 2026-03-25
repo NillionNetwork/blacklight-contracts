@@ -271,7 +271,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         _writeCheckpoint(operator, _operatorStake[operator]);
         _setActiveInSet(operator, _computeIsActive(operator));
 
-        emit StakedTo(msg.sender, operator, amount);
+        emit StakedTo(msg.sender, operator, final_amount);
     }
 
     function requestUnstake(address operator, uint256 amount) external override nonReentrant whenNotPaused {

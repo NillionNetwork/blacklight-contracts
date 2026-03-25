@@ -321,7 +321,10 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     function _harvestIfPossible(uint256 harvestableRewards) internal {
         if (harvestableRewards == 0) return;
 
-        bool restake = _rewardBehavior == RewardBehavior.AutoRestake;
+        _ensureStakeConfigured();
+        // Jailed nodes cannot restake; treat as withdraw so the correct fee applies
+        bool restake = _rewardBehavior == RewardBehavior.AutoRestake
+            && !stakingOperators.isJailed(nodeAddress);
         uint256 feeBpsToUse = restake ? restakeFeeBps : withdrawFeeBps;
         uint256 fee = (harvestableRewards * feeBpsToUse) / 10000;
         // Fees are sent to owner() which is the NodeOperatorFactory; the factory
@@ -335,15 +338,6 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         }
 
         if (!restake) {
-            if (net != 0) token.safeTransfer(nodeUser, net);
-            emit RewardsHarvested(net, fee);
-            return;
-        }
-
-        _ensureStakeConfigured();
-
-        if (stakingOperators.isJailed(nodeAddress)) {
-            // Jailed node cannot earn rewards; send to user instead of restaking
             if (net != 0) token.safeTransfer(nodeUser, net);
             emit RewardsHarvested(net, fee);
             return;

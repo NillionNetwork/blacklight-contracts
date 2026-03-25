@@ -512,4 +512,20 @@ contract StakingOperatorsFeeOnTransferTest is Test {
 
         assertEq(stakingOps.stakeOf(operator), 0);
     }
+
+    function test_stakeTo_feeOnTransfer_eventEmitsActualAmount() public {
+        address operator = address(0xB0B);
+        uint256 stakeAmount = 2e18;
+        uint256 expectedStake = stakeAmount - (stakeAmount * FEE_BPS) / 10_000;
+
+        feeToken.mint(operator, stakeAmount);
+
+        vm.startPrank(operator);
+        feeToken.approve(address(stakingOps), type(uint256).max);
+
+        vm.expectEmit(true, true, false, true);
+        emit StakingOperators.StakedTo(operator, operator, expectedStake);
+        stakingOps.stakeTo(operator, stakeAmount);
+        vm.stopPrank();
+    }
 }
