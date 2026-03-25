@@ -460,6 +460,28 @@ contract NodeOperatorTest is BlacklightFixture {
         assertEq(stakeToken.balanceOf(user1), 1_000e6);
     }
 
+    function test_harvest_jailedAutoRestake_usesWithdrawFee() public {
+        nodeOp.assignUser(user1);
+        _stakeViaFactory(STAKE_AMOUNT);
+        // Set distinct fees: 30% withdraw, 15% restake
+        nodeOp.setModeFeeBps(3000, 1500);
+        _jailNode();
+
+        uint256 rewards = 1_000e6;
+        stakeToken.mint(address(nodeOp), rewards);
+
+        uint256 ownerBefore = stakeToken.balanceOf(address(this));
+        nodeOp.harvestRewards();
+
+        // Should use withdrawFeeBps (30%), not restakeFeeBps (15%)
+        uint256 expectedFee = (rewards * 3000) / 10000; // 300e6
+        uint256 expectedNet = rewards - expectedFee;      // 700e6
+        assertEq(stakeToken.balanceOf(user1), expectedNet);
+        assertEq(stakeToken.balanceOf(address(this)) - ownerBefore, expectedFee);
+        // Not restaked
+        assertEq(stakingOps.stakeOf(node1), STAKE_AMOUNT);
+    }
+
     function test_harvestRevertsIfRewardModulesUnset() public {
         NodeOperator fresh = new NodeOperator(
             address(this),
