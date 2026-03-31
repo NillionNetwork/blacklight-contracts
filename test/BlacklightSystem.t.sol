@@ -256,7 +256,7 @@ contract BlacklightSystemTest is BlacklightFixture {
         assertEq(rewardToken.balanceOf(ops[3]), 100);
     }
 
-    function test_endToEnd_rewards_use_latest_staker_on_distribution() public {
+    function test_endToEnd_rewards_use_snapshot_staker_on_distribution() public {
         uint256 nOps = 2;
         uint256[] memory stakes = new uint256[](nOps);
         for (uint256 i = 0; i < nOps; i++) {
@@ -296,9 +296,10 @@ contract BlacklightSystemTest is BlacklightFixture {
 
         manager.distributeRewards(hbKey, round, members);
 
-        assertEq(rewardPolicy.rewards(newStaker), 100);
+        // With snapshot-based staker lookup, ops[0] was self-staked at snapshot time
+        assertEq(rewardPolicy.rewards(ops[0]), 100);
         assertEq(rewardPolicy.rewards(ops[1]), 100);
-        assertEq(rewardPolicy.rewards(ops[0]), 0);
+        assertEq(rewardPolicy.rewards(newStaker), 0);
     }
 
     function test_largeCommittee_200_members_finalizes_and_jailing_enforcement() public {
@@ -428,6 +429,9 @@ contract BlacklightSystemTest is BlacklightFixture {
         _finalizeDefault(hbKey1, round1);
         // Jail everyone except correct voters
         jailingPolicy.enforceJailFromMembers(hbKey1, round1, members1);
+
+        // Advance block so the next snapshot captures the jailing
+        vm.roll(block.number + 1);
 
         // Submit a new heartbeat (different HTX)
         vm.recordLogs();

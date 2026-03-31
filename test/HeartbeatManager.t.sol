@@ -884,8 +884,9 @@ contract HeartbeatManagerTest is BlacklightFixture {
 
         manager.distributeRewards(hbKey, round, voters);
 
-        assertEq(rewardPolicy.rewards(sharedStaker), 20);
-        assertEq(rewardPolicy.rewards(operator), 0);
+        // With snapshot-based staker lookup, operator was self-staked at snapshot time
+        assertEq(rewardPolicy.rewards(operator), 20);
+        assertEq(rewardPolicy.rewards(sharedStaker), 0);
     }
 
     function test_committeeRoot_matchesOffchainMerkleComputation() public {

@@ -415,6 +415,9 @@ contract KeeperE2EPathsTest is BlacklightFixture {
         address[] memory active = stakingOps.getActiveOperators();
         assertEq(active.length, 0);
 
+        // Advance block so historical snapshot reflects deactivation
+        vm.roll(block.number + 1);
+
         bytes32 heartbeatKey = keccak256("hb2");
         uint64 snapshotId = uint64(block.number - 1);
 

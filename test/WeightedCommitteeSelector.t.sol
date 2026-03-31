@@ -215,7 +215,7 @@ contract WeightedCommitteeSelectorTest is Test {
 
         vm.roll(block.number + 1);
 
-        vm.expectRevert(WeightedCommitteeSelector.ZeroTotalVotingPower.selector);
+        vm.expectRevert(WeightedCommitteeSelector.NoOperators.selector);
         selector.selectCommittee(bytes32("hbKey"), 1, 1, snapshotId);
     }
 
@@ -231,6 +231,31 @@ contract WeightedCommitteeSelectorTest is Test {
         vm.prank(admin);
         vm.expectRevert(WeightedCommitteeSelector.ZeroMaxSize.selector);
         selector.setMaxCommitteeSize(0);
+    }
+
+    function test_selectCommittee_includesOperatorDeactivatedAfterSnapshot() public {
+        address[] memory made = _makeOperators(2, 2e18);
+
+        vm.roll(block.number + 1);
+        uint64 snap = stakingOps.snapshot();
+
+        // Operator deactivates AFTER the snapshot - should still be eligible
+        vm.prank(made[0]);
+        stakingOps.deactivateOperator();
+
+        address[] memory members = selector.selectCommittee(bytes32("hbKey"), 1, 2, snap);
+
+        assertEq(members.length, 2, "both operators should be selected");
+
+        bool saw0;
+        bool saw1;
+        for (uint256 i = 0; i < members.length; ++i) {
+            if (members[i] == made[0]) saw0 = true;
+            if (members[i] == made[1]) saw1 = true;
+        }
+
+        assertTrue(saw0, "missing operator that was active at snapshot");
+        assertTrue(saw1, "missing operator that was active at snapshot");
     }
 
     function test_setMaxActiveOperators_zeroResetsDefault() public {

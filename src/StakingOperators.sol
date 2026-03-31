@@ -42,6 +42,16 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         uint224 stake;
     }
 
+    struct ActiveCheckpoint {
+        uint64 fromBlock;
+        bool isActive;
+    }
+
+    struct StakerCheckpoint {
+        uint64 fromBlock;
+        address staker;
+    }
+
     struct Unbonding {
         address staker;
         IStakingOperators.Tranche[] tranches;
@@ -86,6 +96,11 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
 
     address[] private _activeOperators;
     mapping(address => uint256) private _activeIndexPlus1;
+
+    mapping(address => ActiveCheckpoint[]) private _activeCheckpoints;
+    mapping(address => StakerCheckpoint[]) private _stakerCheckpoints;
+    address[] private _everActiveOperators;
+    mapping(address => bool) private _wasEverActive;
 
     event StakedTo(address indexed staker, address indexed operator, uint256 amount);
     event UnstakeRequested(address indexed staker, address indexed operator, uint256 amount, uint64 releaseTime);
@@ -238,6 +253,11 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
             if (_activeOperators.length >= maxActiveOperators) revert TooManyActiveOperators();
             _activeOperators.push(operator);
             _activeIndexPlus1[operator] = _activeOperators.length;
+            _writeActiveCheckpoint(operator, true);
+            if (!_wasEverActive[operator]) {
+                _wasEverActive[operator] = true;
+                _everActiveOperators.push(operator);
+            }
             emit ActiveStatusUpdated(operator, true);
         } else if (!shouldBeActive && isInSet) {
             uint256 idx = idxPlus1 - 1;
@@ -249,6 +269,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
             }
             _activeOperators.pop();
             _activeIndexPlus1[operator] = 0;
+            _writeActiveCheckpoint(operator, false);
             emit ActiveStatusUpdated(operator, false);
         }
     }
@@ -293,6 +314,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
                 revert UnauthorizedStaker();
             }
             operatorStaker[operator] = msg.sender;
+            _writeStakerCheckpoint(operator, msg.sender);
             _unbondings[operator].staker = msg.sender;
             if (approved != address(0)) approvedStaker[operator] = address(0);
         } else if (currentStaker != msg.sender) {
@@ -342,6 +364,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         if (len == 0) {
             if (_operatorStake[operator] != 0) revert NoUnbonding();
             operatorStaker[operator] = address(0);
+            _writeStakerCheckpoint(operator, address(0));
             u.staker = address(0);
             _setActiveInSet(operator, _computeIsActive(operator));
             return;
@@ -365,6 +388,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         address staker = u.staker;
         if (u.tranches.length == 0 && _operatorStake[operator] == 0) {
             operatorStaker[operator] = address(0);
+            _writeStakerCheckpoint(operator, address(0));
             u.staker = address(0);
         }
 
@@ -498,6 +522,81 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         } else {
             ckpts.push(StakeCheckpoint({fromBlock: blockNum, stake: boundedStake}));
         }
+    }
+
+    function _writeActiveCheckpoint(address operator, bool active) internal {
+        ActiveCheckpoint[] storage ckpts = _activeCheckpoints[operator];
+        uint64 blockNum = uint64(block.number);
+        uint256 len = ckpts.length;
+        if (len != 0 && ckpts[len - 1].fromBlock == blockNum) {
+            ckpts[len - 1].isActive = active;
+        } else {
+            ckpts.push(ActiveCheckpoint({fromBlock: blockNum, isActive: active}));
+        }
+    }
+
+    function _writeStakerCheckpoint(address operator, address staker) internal {
+        StakerCheckpoint[] storage ckpts = _stakerCheckpoints[operator];
+        uint64 blockNum = uint64(block.number);
+        uint256 len = ckpts.length;
+        if (len != 0 && ckpts[len - 1].fromBlock == blockNum) {
+            ckpts[len - 1].staker = staker;
+        } else {
+            ckpts.push(StakerCheckpoint({fromBlock: blockNum, staker: staker}));
+        }
+    }
+
+    function _activeAt(address operator, uint64 snapshotId) internal view returns (bool) {
+        ActiveCheckpoint[] storage ckpts = _activeCheckpoints[operator];
+        uint256 len = ckpts.length;
+        if (len == 0) return false;
+        if (ckpts[0].fromBlock > snapshotId) return false;
+
+        uint256 high = len - 1;
+        if (ckpts[high].fromBlock <= snapshotId) return ckpts[high].isActive;
+
+        uint256 low = 0;
+        while (high > low) {
+            uint256 mid = Math.ceilDiv(high + low, 2);
+            if (ckpts[mid].fromBlock <= snapshotId) low = mid;
+            else high = mid - 1;
+        }
+        return ckpts[low].isActive;
+    }
+
+    function getActiveOperatorsAt(uint64 snapshotId) external view override returns (address[] memory) {
+        uint256 total = _everActiveOperators.length;
+        address[] memory temp = new address[](total);
+        uint256 count;
+        for (uint256 i = 0; i < total; ++i) {
+            address op = _everActiveOperators[i];
+            if (_activeAt(op, snapshotId)) {
+                temp[count++] = op;
+            }
+        }
+        address[] memory result = new address[](count);
+        for (uint256 i = 0; i < count; ++i) {
+            result[i] = temp[i];
+        }
+        return result;
+    }
+
+    function operatorStakerAt(address operator, uint64 snapshotId) external view override returns (address) {
+        StakerCheckpoint[] storage ckpts = _stakerCheckpoints[operator];
+        uint256 len = ckpts.length;
+        if (len == 0) return address(0);
+        if (ckpts[0].fromBlock > snapshotId) return address(0);
+
+        uint256 high = len - 1;
+        if (ckpts[high].fromBlock <= snapshotId) return ckpts[high].staker;
+
+        uint256 low = 0;
+        while (high > low) {
+            uint256 mid = Math.ceilDiv(high + low, 2);
+            if (ckpts[mid].fromBlock <= snapshotId) low = mid;
+            else high = mid - 1;
+        }
+        return ckpts[low].staker;
     }
 
     function _isProtocolConfig(address candidate) internal view returns (bool) {

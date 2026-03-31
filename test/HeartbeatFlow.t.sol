@@ -56,6 +56,67 @@ contract HeartbeatFlowTest is BlacklightFixture {
     }
 }
 
+contract HeartbeatRewardSnapshotStakerTest is BlacklightFixture {
+    function setUp() public {
+        uint256[] memory stakes = new uint256[](2);
+        stakes[0] = 150e18;
+        stakes[1] = 150e18;
+
+        _deploySystem(
+            2,
+            stakes,
+            2,    // baseCommitteeSize
+            2,    // maxCommitteeSize
+            5000, // quorumBps (50%)
+            5000, // verificationBps (50%)
+            1 days,
+            7 days,
+            0     // maxEscalations
+        );
+    }
+
+    function test_distributeRewards_usesSnapshotStakerBinding() public {
+        rewardToken.mint(governance, 1_000e18);
+        vm.prank(governance);
+        rewardToken.approve(address(rewardPolicy), type(uint256).max);
+        vm.prank(governance);
+        rewardPolicy.fund(1_000e18);
+
+        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+
+        // Vote valid with first member
+        _vote(hbKey, round, members, members[0], 1);
+        _finalizeDefault(hbKey, round);
+
+        address operator = members[0];
+        address oldStaker = stakingOps.operatorStaker(operator);
+        uint256 oldStake = stakingOps.stakeOf(operator);
+
+        // Old staker fully exits
+        vm.startPrank(oldStaker);
+        stakingOps.requestUnstake(operator, oldStake);
+        vm.warp(block.timestamp + 1 days + 1);
+        stakingOps.withdrawUnstaked(operator);
+        vm.stopPrank();
+
+        // New staker binds to the same operator
+        address newStaker = address(0xBEEF);
+        stakeToken.mint(newStaker, oldStake);
+        vm.startPrank(newStaker);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(operator, oldStake);
+        vm.stopPrank();
+
+        // Distribute rewards - should go to oldStaker, not newStaker
+        address[] memory voters = new address[](1);
+        voters[0] = operator;
+        manager.distributeRewards(hbKey, round, voters);
+
+        assertGt(rewardPolicy.rewards(oldStaker), 0, "old staker should receive rewards");
+        assertEq(rewardPolicy.rewards(newStaker), 0, "new staker must not receive historical rewards");
+    }
+}
+
 contract HeartbeatInvalidRewardFlowTest is BlacklightFixture {
     function setUp() public {
         uint256[] memory stakes = new uint256[](10);
