@@ -93,19 +93,11 @@ contract DeployTestRCSystem is Script {
         require(stakeToken != address(0), "stake token required");
         require(rewardToken != address(0), "reward token required");
 
-        StakingOperators stakingOps = new StakingOperators(
-            IERC20(stakeToken),
-            p.admin,
-            p.unstakeDelay
-        );
+        StakingOperators stakingOps = new StakingOperators(IERC20(stakeToken), p.admin, p.unstakeDelay);
         console2.log("StakingOperators:", address(stakingOps));
 
-        WeightedCommitteeSelector selector = new WeightedCommitteeSelector(
-            stakingOps,
-            p.admin,
-            p.minCommitteeVP,
-            p.maxCommitteeSize
-        );
+        WeightedCommitteeSelector selector =
+            new WeightedCommitteeSelector(stakingOps, p.admin, p.minCommitteeVP, p.maxCommitteeSize);
         console2.log("WeightedCommitteeSelector:", address(selector));
 
         address configOwner = p.deployer;
@@ -141,11 +133,7 @@ contract DeployTestRCSystem is Script {
         }
 
         RewardPolicy rewardPolicy = new RewardPolicy(
-            IERC20(rewardToken),
-            address(manager),
-            p.governance,
-            p.rewardEpochDuration,
-            p.rewardMaxPayoutPerFinalize
+            IERC20(rewardToken), address(manager), p.governance, p.rewardEpochDuration, p.rewardMaxPayoutPerFinalize
         );
         console2.log("RewardPolicy:", address(rewardPolicy));
 
@@ -192,7 +180,7 @@ contract DeployTestRCSystem is Script {
         p.admin = vm.envOr("ADMIN", p.deployer);
 
         p.useMockTokens = vm.envOr("USE_MOCK_TOKENS", false);
-        p.stakeToken = vm.envOr("STAKE_TOKEN", address(0)); 
+        p.stakeToken = vm.envOr("STAKE_TOKEN", address(0));
         p.rewardToken = vm.envOr("REWARD_TOKEN", address(0));
         p.mintRecipient = vm.envOr("MINT_RECIPIENT", p.governance);
         p.mockStakeMint = vm.envOr("MOCK_STAKE_MINT", uint256(1_000_000e6)); // 6 DECIMALS
@@ -231,5 +219,4 @@ contract DeployTestRCSystem is Script {
             addrs[i] = vm.parseAddress(vm.trim(parts[i]));
         }
     }
-
 }

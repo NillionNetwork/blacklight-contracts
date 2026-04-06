@@ -18,7 +18,13 @@ contract StakingHandler is Test {
     address[] public operators;
     mapping(address => bool) public registered;
 
-    constructor(MockERC20 _token, StakingOperators _stakingOps, ProtocolConfig _config, address _admin, address[] memory _ops) {
+    constructor(
+        MockERC20 _token,
+        StakingOperators _stakingOps,
+        ProtocolConfig _config,
+        address _admin,
+        address[] memory _ops
+    ) {
         token = _token;
         stakingOps = _stakingOps;
         config = _config;
@@ -209,7 +215,9 @@ contract StakingInvariants is StdInvariant, Test {
             address op = ops[i];
             sum += stakingOps.stakeOf(op);
             IStakingOperators.Tranche[] memory tr = stakingOps.getUnbondingTranches(op);
-            for (uint256 j = 0; j < tr.length; j++) sum += tr[j].amount;
+            for (uint256 j = 0; j < tr.length; j++) {
+                sum += tr[j].amount;
+            }
         }
         assertEq(sum, stakingOps.totalStaked());
     }

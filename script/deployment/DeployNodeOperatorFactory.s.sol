@@ -23,12 +23,12 @@ contract DeployNodeOperatorFactory is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
 
-        address stakingOps   = vm.envAddress("STAKING_OPERATORS");
+        address stakingOps = vm.envAddress("STAKING_OPERATORS");
         address rewardPolicy = vm.envAddress("REWARD_POLICY");
-        address stakeToken   = vm.envAddress("STAKE_TOKEN");
+        address stakeToken = vm.envAddress("STAKE_TOKEN");
         uint256 withdrawFeeBps = vm.envOr("FACTORY_WITHDRAW_FEE_BPS", uint256(3000));
-        uint256 restakeFeeBps  = vm.envOr("FACTORY_RESTAKE_FEE_BPS",  uint256(1500));
-        uint256 minStake       = vm.envOr("FACTORY_MIN_STAKE",        uint256(1_000_000e6));
+        uint256 restakeFeeBps = vm.envOr("FACTORY_RESTAKE_FEE_BPS", uint256(1500));
+        uint256 minStake = vm.envOr("FACTORY_MIN_STAKE", uint256(1_000_000e6));
 
         vm.startBroadcast(deployerPrivateKey);
 

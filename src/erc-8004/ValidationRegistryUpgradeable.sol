@@ -17,10 +17,7 @@ interface IHeartbeatManager {
 
 contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
     event ValidationRequest(
-        address indexed validatorAddress,
-        uint256 indexed agentId,
-        string requestURI,
-        bytes32 indexed requestHash
+        address indexed validatorAddress, uint256 indexed agentId, string requestURI, bytes32 indexed requestHash
     );
 
     event ValidationResponse(
@@ -36,7 +33,7 @@ contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
     struct ValidationStatus {
         address validatorAddress;
         uint256 agentId;
-        uint8 response;       // 0..100
+        uint8 response; // 0..100
         bytes32 responseHash;
         string tag;
         uint256 lastUpdate;
@@ -109,9 +106,8 @@ contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
         IIdentityRegistry registry = IIdentityRegistry(_identityRegistry);
         address owner = registry.ownerOf(agentId);
         require(
-            msg.sender == owner ||
-            registry.isApprovedForAll(owner, msg.sender) ||
-            registry.getApproved(agentId) == msg.sender,
+            msg.sender == owner || registry.isApprovedForAll(owner, msg.sender)
+                || registry.getApproved(agentId) == msg.sender,
             "Not authorized"
         );
 
@@ -163,7 +159,14 @@ contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
     function getValidationStatus(bytes32 requestHash)
         external
         view
-        returns (address validatorAddress, uint256 agentId, uint8 response, bytes32 responseHash, string memory tag, uint256 lastUpdate)
+        returns (
+            address validatorAddress,
+            uint256 agentId,
+            uint8 response,
+            bytes32 responseHash,
+            string memory tag,
+            uint256 lastUpdate
+        )
     {
         ValidationRegistryStorage storage $ = _getValidationRegistryStorage();
         ValidationStatus memory s = $.validations[requestHash];
@@ -171,11 +174,11 @@ contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
         return (s.validatorAddress, s.agentId, s.response, s.responseHash, s.tag, s.lastUpdate);
     }
 
-    function getSummary(
-        uint256 agentId,
-        address[] calldata validatorAddresses,
-        string calldata tag
-    ) external view returns (uint64 count, uint8 avgResponse) {
+    function getSummary(uint256 agentId, address[] calldata validatorAddresses, string calldata tag)
+        external
+        view
+        returns (uint64 count, uint8 avgResponse)
+    {
         ValidationRegistryStorage storage $ = _getValidationRegistryStorage();
         uint256 totalResponse;
 
@@ -221,11 +224,7 @@ contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
     /// @param rawHTXHash Hash of the rawHTX that was submitted
     /// @param response 100 = valid, 0 = invalid, 50 = inconclusive
     /// @param heartbeatKey The heartbeat key from HeartbeatManager
-    function onHeartbeatFinalized(
-        bytes32 rawHTXHash,
-        uint8 response,
-        bytes32 heartbeatKey
-    ) external {
+    function onHeartbeatFinalized(bytes32 rawHTXHash, uint8 response, bytes32 heartbeatKey) external {
         require(msg.sender == _heartbeatManager, "only heartbeat manager");
 
         ValidationRegistryStorage storage $ = _getValidationRegistryStorage();
@@ -241,15 +240,7 @@ contract ValidationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
         s.lastUpdate = block.timestamp;
         s.hasResponse = true;
 
-        emit ValidationResponse(
-            s.validatorAddress,
-            s.agentId,
-            requestHash,
-            response,
-            "",
-            heartbeatKey,
-            s.tag
-        );
+        emit ValidationResponse(s.validatorAddress, s.agentId, requestHash, response, "", heartbeatKey, s.tag);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}

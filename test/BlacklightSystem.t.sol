@@ -10,13 +10,15 @@ contract BlacklightSystemTest is BlacklightFixture {
     function test_endToEnd_valid_workflow_rewards_and_claim() public {
         uint256 nOps = 15;
         uint256[] memory stakes = new uint256[](nOps);
-        for (uint256 i = 0; i < nOps; i++) stakes[i] = 2e18;
+        for (uint256 i = 0; i < nOps; i++) {
+            stakes[i] = 2e18;
+        }
 
         _deploySystem(
             nOps,
             stakes,
-            10,   // baseCommitteeSize
-            10,   // maxCommitteeSize
+            10, // baseCommitteeSize
+            10, // maxCommitteeSize
             5000, // quorumBps
             5000, // verificationBps
             1 days,
@@ -24,10 +26,12 @@ contract BlacklightSystemTest is BlacklightFixture {
             0
         );
 
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
 
         // Finalize valid threshold with 5/10 votes
-        for (uint256 i = 0; i < 5; i++) _vote(hbKey, round, members, members[i], 1);
+        for (uint256 i = 0; i < 5; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
 
         _finalizeDefault(hbKey, round);
         assertEq(uint8(manager.roundOutcome(hbKey, round)), uint8(ISlashingPolicy.Outcome.ValidThreshold));
@@ -41,7 +45,9 @@ contract BlacklightSystemTest is BlacklightFixture {
 
         // Distribute rewards to valid voters (already sorted)
         address[] memory voters = new address[](5);
-        for (uint256 i = 0; i < 5; i++) voters[i] = members[i];
+        for (uint256 i = 0; i < 5; i++) {
+            voters[i] = members[i];
+        }
 
         manager.distributeRewards(hbKey, round, voters);
 
@@ -58,19 +64,11 @@ contract BlacklightSystemTest is BlacklightFixture {
     function test_endToEnd_rewards_claim_by_staker() public {
         uint256 nOps = 6;
         uint256[] memory stakes = new uint256[](nOps);
-        for (uint256 i = 0; i < nOps; i++) stakes[i] = 2e18;
+        for (uint256 i = 0; i < nOps; i++) {
+            stakes[i] = 2e18;
+        }
 
-        _deploySystem(
-            nOps,
-            stakes,
-            6,
-            6,
-            5000,
-            5000,
-            1 days,
-            7 days,
-            0
-        );
+        _deploySystem(nOps, stakes, 6, 6, 5000, 5000, 1 days, 7 days, 0);
 
         address sharedStaker = address(0xBEEF);
         uint256 stakeAmount = stakingOps.stakeOf(ops[0]);
@@ -100,7 +98,7 @@ contract BlacklightSystemTest is BlacklightFixture {
         vm.roll(block.number + 1);
         vm.warp(block.timestamp + 1);
 
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
         assertEq(members.length, nOps);
 
         for (uint256 i = 0; i < members.length; i++) {
@@ -130,19 +128,11 @@ contract BlacklightSystemTest is BlacklightFixture {
     function test_endToEnd_rewards_large_shared_staker() public {
         uint256 nOps = 20;
         uint256[] memory stakes = new uint256[](nOps);
-        for (uint256 i = 0; i < nOps; i++) stakes[i] = 2e18;
+        for (uint256 i = 0; i < nOps; i++) {
+            stakes[i] = 2e18;
+        }
 
-        _deploySystem(
-            nOps,
-            stakes,
-            20,
-            20,
-            5000,
-            5000,
-            1 days,
-            7 days,
-            0
-        );
+        _deploySystem(nOps, stakes, 20, 20, 5000, 5000, 1 days, 7 days, 0);
 
         address sharedStaker = address(0xBEEF);
         uint256 stakeAmount = stakingOps.stakeOf(ops[0]);
@@ -172,7 +162,7 @@ contract BlacklightSystemTest is BlacklightFixture {
         vm.roll(block.number + 1);
         vm.warp(block.timestamp + 1);
 
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
         assertEq(members.length, nOps);
 
         for (uint256 i = 0; i < members.length; i++) {
@@ -198,19 +188,11 @@ contract BlacklightSystemTest is BlacklightFixture {
     function test_endToEnd_rewards_mixed_staker_and_operator_claims() public {
         uint256 nOps = 4;
         uint256[] memory stakes = new uint256[](nOps);
-        for (uint256 i = 0; i < nOps; i++) stakes[i] = 2e18;
+        for (uint256 i = 0; i < nOps; i++) {
+            stakes[i] = 2e18;
+        }
 
-        _deploySystem(
-            nOps,
-            stakes,
-            4,
-            4,
-            5000,
-            5000,
-            1 days,
-            7 days,
-            0
-        );
+        _deploySystem(nOps, stakes, 4, 4, 5000, 5000, 1 days, 7 days, 0);
 
         address sharedStaker = address(0xBEEF);
         uint256 stakeAmount = stakingOps.stakeOf(ops[0]);
@@ -239,7 +221,7 @@ contract BlacklightSystemTest is BlacklightFixture {
         vm.roll(block.number + 1);
         vm.warp(block.timestamp + 1);
 
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
         assertEq(members.length, nOps);
 
         for (uint256 i = 0; i < members.length; i++) {
@@ -277,21 +259,13 @@ contract BlacklightSystemTest is BlacklightFixture {
     function test_endToEnd_rewards_use_latest_staker_on_distribution() public {
         uint256 nOps = 2;
         uint256[] memory stakes = new uint256[](nOps);
-        for (uint256 i = 0; i < nOps; i++) stakes[i] = 2e18;
+        for (uint256 i = 0; i < nOps; i++) {
+            stakes[i] = 2e18;
+        }
 
-        _deploySystem(
-            nOps,
-            stakes,
-            2,
-            2,
-            5000,
-            5000,
-            1 days,
-            7 days,
-            0
-        );
+        _deploySystem(nOps, stakes, 2, 2, 5000, 5000, 1 days, 7 days, 0);
 
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
         for (uint256 i = 0; i < members.length; i++) {
             _vote(hbKey, round, members, members[i], 1);
         }
@@ -330,13 +304,15 @@ contract BlacklightSystemTest is BlacklightFixture {
     function test_largeCommittee_200_members_finalizes_and_jailing_enforcement() public {
         uint256 nOps = 250;
         uint256[] memory stakes = new uint256[](nOps);
-        for (uint256 i = 0; i < nOps; i++) stakes[i] = 2e18;
+        for (uint256 i = 0; i < nOps; i++) {
+            stakes[i] = 2e18;
+        }
 
         _deploySystem(
             nOps,
             stakes,
-            200,  // baseCommitteeSize
-            200,  // maxCommitteeSize
+            200, // baseCommitteeSize
+            200, // maxCommitteeSize
             3000, // quorumBps (30%)
             3000, // verificationBps (30%)
             1 days,
@@ -344,11 +320,13 @@ contract BlacklightSystemTest is BlacklightFixture {
             0
         );
 
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
         assertEq(members.length, 200);
 
         // vote valid from first 60 members => 30% of total stake (since equal stake)
-        for (uint256 i = 0; i < 60; i++) _vote(hbKey, round, members, members[i], 1);
+        for (uint256 i = 0; i < 60; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
 
         _finalizeDefault(hbKey, round);
         assertEq(uint8(manager.roundOutcome(hbKey, round)), uint8(ISlashingPolicy.Outcome.ValidThreshold));
@@ -374,8 +352,8 @@ contract BlacklightSystemTest is BlacklightFixture {
         _deploySystem(
             nOps,
             stakes,
-            50,    // baseCommitteeSize
-            50,    // maxCommitteeSize
+            50, // baseCommitteeSize
+            50, // maxCommitteeSize
             10_000, // quorumBps (force full participation)
             10_000, // verificationBps (force full participation)
             1 days,
@@ -391,7 +369,7 @@ contract BlacklightSystemTest is BlacklightFixture {
         rewardPolicy.setMaxPayoutPerFinalize(5_000);
 
         for (uint64 id = 1; id <= 3; id++) {
-            (bytes32 hbKey, uint8 round, , uint64 snapshotId, address[] memory members) = _submitRawHTXAndGetRound(id);
+            (bytes32 hbKey, uint8 round,, uint64 snapshotId, address[] memory members) = _submitRawHTXAndGetRound(id);
 
             uint256 spendableBefore = rewardPolicy.spendableBudget();
             uint256 budget = spendableBefore;
@@ -432,24 +410,18 @@ contract BlacklightSystemTest is BlacklightFixture {
     function test_jailing_removesFromNextCommitteeSelection() public {
         uint256 nOps = 20;
         uint256[] memory stakes = new uint256[](nOps);
-        for (uint256 i = 0; i < nOps; i++) stakes[i] = 2e18;
+        for (uint256 i = 0; i < nOps; i++) {
+            stakes[i] = 2e18;
+        }
 
-        _deploySystem(
-            nOps,
-            stakes,
-            10,
-            10,
-            5000,
-            5000,
-            1 days,
-            7 days,
-            0
-        );
+        _deploySystem(nOps, stakes, 10, 10, 5000, 5000, 1 days, 7 days, 0);
 
-        (bytes32 hbKey1, uint8 round1, , , address[] memory members1) = _submitPointerAndGetRound();
+        (bytes32 hbKey1, uint8 round1,,, address[] memory members1) = _submitPointerAndGetRound();
 
         // Finalize with 5 valid votes and 1 invalid vote (invalid before finalizing)
-        for (uint256 i = 0; i < 4; i++) _vote(hbKey1, round1, members1, members1[i], 1);
+        for (uint256 i = 0; i < 4; i++) {
+            _vote(hbKey1, round1, members1, members1[i], 1);
+        }
         _vote(hbKey1, round1, members1, members1[5], 2);
         _vote(hbKey1, round1, members1, members1[4], 1);
 
@@ -462,7 +434,7 @@ contract BlacklightSystemTest is BlacklightFixture {
         bytes memory rawHTX2 = _defaultRawHTX(2);
         uint64 submissionBlock = uint64(block.number);
         bytes32 hbKey2 = manager.deriveHeartbeatKey(rawHTX2, submissionBlock);
-        (uint64 snap2, ) = _prepareCommittee(hbKey2, 1, 0);
+        (uint64 snap2,) = _prepareCommittee(hbKey2, 1, 0);
         vm.prank(ops[0]);
         manager.submitHeartbeat(rawHTX2, snap2);
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -471,8 +443,7 @@ contract BlacklightSystemTest is BlacklightFixture {
         address[] memory members2;
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics.length > 0 && logs[i].topics[0] == sig && bytes32(logs[i].topics[1]) == hbKey2) {
-                (, , , , , members2, ) =
-                    abi.decode(logs[i].data, (uint8, bytes32, uint32, uint64, uint64, address[], bytes));
+                (,,,,, members2,) = abi.decode(logs[i].data, (uint8, bytes32, uint32, uint64, uint64, address[], bytes));
                 break;
             }
         }
@@ -493,13 +464,15 @@ contract BlacklightSystemTest is BlacklightFixture {
     function test_veryLargeOperatorPool_reward_distribution_and_jailing() public {
         uint256 nOps = 1000;
         uint256[] memory stakes = new uint256[](nOps);
-        for (uint256 i = 0; i < nOps; i++) stakes[i] = 1e18;
+        for (uint256 i = 0; i < nOps; i++) {
+            stakes[i] = 1e18;
+        }
 
         _deploySystem(
             nOps,
             stakes,
-            200,  // baseCommitteeSize
-            200,  // maxCommitteeSize
+            200, // baseCommitteeSize
+            200, // maxCommitteeSize
             5000, // quorumBps (50%)
             5000, // verificationBps (50%)
             1 days,
@@ -507,11 +480,13 @@ contract BlacklightSystemTest is BlacklightFixture {
             0
         );
 
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
         assertEq(members.length, 200);
 
         // 120 valid votes (60% of committee) finalize to ValidThreshold.
-        for (uint256 i = 0; i < 120; i++) _vote(hbKey, round, members, members[i], 1);
+        for (uint256 i = 0; i < 120; i++) {
+            _vote(hbKey, round, members, members[i], 1);
+        }
         _finalizeDefault(hbKey, round);
         assertEq(uint8(manager.roundOutcome(hbKey, round)), uint8(ISlashingPolicy.Outcome.ValidThreshold));
 
@@ -523,7 +498,9 @@ contract BlacklightSystemTest is BlacklightFixture {
         rewardPolicy.sync();
 
         address[] memory voters = new address[](120);
-        for (uint256 i = 0; i < 120; i++) voters[i] = members[i];
+        for (uint256 i = 0; i < 120; i++) {
+            voters[i] = members[i];
+        }
 
         manager.distributeRewards(hbKey, round, voters);
 

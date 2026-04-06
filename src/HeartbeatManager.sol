@@ -64,7 +64,13 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
     bytes32 public constant HEARTBEAT_SUBMITTER_ROLE = keccak256("HEARTBEAT_SUBMITTER_ROLE");
     bytes32 public constant HEARTBEAT_SUBMITTER_ADMIN_ROLE = keccak256("HEARTBEAT_SUBMITTER_ADMIN_ROLE");
 
-    enum HeartbeatStatus { None, Pending, Verified, Invalid, Expired }
+    enum HeartbeatStatus {
+        None,
+        Pending,
+        Verified,
+        Invalid,
+        Expired
+    }
 
     struct Heartbeat {
         HeartbeatStatus status;
@@ -127,19 +133,31 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
 
     event ConfigUpdated(address config);
     event HeartbeatEnqueued(bytes32 indexed heartbeatKey, bytes rawHTX, address indexed submitter);
-    event RoundStarted(bytes32 indexed heartbeatKey, uint8 round, bytes32 committeeRoot, uint64 snapshotId, uint64 startedAt, uint64 deadline, address[] members, bytes rawHTX);
-    event OperatorVoted(bytes32 indexed heartbeatKey, uint8 round, address indexed operator, uint8 verdict, uint256 weight);
-    event HeartbeatStatusChanged(bytes32 indexed heartbeatKey, HeartbeatStatus oldStatus, HeartbeatStatus newStatus, uint8 round);
+    event RoundStarted(
+        bytes32 indexed heartbeatKey,
+        uint8 round,
+        bytes32 committeeRoot,
+        uint64 snapshotId,
+        uint64 startedAt,
+        uint64 deadline,
+        address[] members,
+        bytes rawHTX
+    );
+    event OperatorVoted(
+        bytes32 indexed heartbeatKey, uint8 round, address indexed operator, uint8 verdict, uint256 weight
+    );
+    event HeartbeatStatusChanged(
+        bytes32 indexed heartbeatKey, HeartbeatStatus oldStatus, HeartbeatStatus newStatus, uint8 round
+    );
     event RoundFinalized(bytes32 indexed heartbeatKey, uint8 round, ISlashingPolicy.Outcome outcome);
     event SlashingCallbackFailed(bytes32 indexed heartbeatKey, uint8 indexed round, bytes lowLevelData);
     event RewardDistributionAbandoned(bytes32 indexed heartbeatKey, uint8 indexed round);
-    event RewardsDistributed(bytes32 indexed heartbeatKey, uint8 indexed round, uint256 voterCount, uint256 totalWeight);
+    event RewardsDistributed(
+        bytes32 indexed heartbeatKey, uint8 indexed round, uint256 voterCount, uint256 totalWeight
+    );
     event SlashingGasLimitUpdated(uint256 oldLimit, uint256 newLimit);
 
-    constructor(IProtocolConfig _config, address _owner)
-        Ownable(_owner)
-        EIP712("HeartbeatManager", "1")
-    {
+    constructor(IProtocolConfig _config, address _owner) Ownable(_owner) EIP712("HeartbeatManager", "1") {
         if (address(_config) == address(0)) revert ZeroAddress();
         if (!_isProtocolConfig(address(_config))) revert InvalidProtocolConfig(address(_config));
         config = _config;
@@ -164,8 +182,13 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         slashingGasLimit = newLimit;
     }
 
-    function pause() external onlyOwner { _pause(); }
-    function unpause() external onlyOwner { _unpause(); }
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
 
     function _deriveHeartbeatKey(bytes calldata rawHTX, uint64 blockNumber) internal pure returns (bytes32) {
         bytes32 rawHash = keccak256(rawHTX);
@@ -192,14 +215,14 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         if (r.stakingOps != address(0)) return;
 
         r.stakingOps = config.stakingOps();
-        r.selector   = config.committeeSelector();
-        r.slashing   = config.slashingPolicy();
-        r.reward     = config.rewardPolicy();
+        r.selector = config.committeeSelector();
+        r.slashing = config.slashingPolicy();
+        r.reward = config.rewardPolicy();
 
-        r.quorumBps         = config.quorumBps();
-        r.verificationBps   = config.verificationBps();
+        r.quorumBps = config.quorumBps();
+        r.verificationBps = config.verificationBps();
         r.responseWindowSec = SafeCast.toUint64(config.responseWindow());
-        r.jailDurationSec   = SafeCast.toUint64(config.jailDuration());
+        r.jailDurationSec = SafeCast.toUint64(config.jailDuration());
     }
 
     function submitHeartbeat(bytes calldata rawHTX, uint64 snapshotId)
@@ -236,7 +259,10 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         emit HeartbeatEnqueued(heartbeatKey, rawHTX, msg.sender);
     }
 
-    function _startRound(bytes32 heartbeatKey, uint8 round, uint64 explicitSnapshotId, bytes calldata rawHTX) internal returns (address[] memory members) {
+    function _startRound(bytes32 heartbeatKey, uint8 round, uint64 explicitSnapshotId, bytes calldata rawHTX)
+        internal
+        returns (address[] memory members)
+    {
         Heartbeat storage w = heartbeats[heartbeatKey];
         if (w.status != HeartbeatStatus.Pending) revert NotPending();
 
@@ -245,7 +271,7 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         RoundInfo storage r = rounds[heartbeatKey][round];
 
         IStakingOperators stakingOps = IStakingOperators(r.stakingOps);
-        ICommitteeSelector selector  = ICommitteeSelector(r.selector);
+        ICommitteeSelector selector = ICommitteeSelector(r.selector);
 
         uint64 snapshotId = explicitSnapshotId;
         if (snapshotId == 0) {
@@ -298,11 +324,7 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         _submitVerdict(msg.sender, heartbeatKey, verdict, memberProof, 0);
     }
 
-    function submitVerdictsBatched(SignedBatchedVote[] calldata votes)
-        external
-        whenNotPaused
-        nonReentrant
-    {
+    function submitVerdictsBatched(SignedBatchedVote[] calldata votes) external whenNotPaused nonReentrant {
         uint256 len = votes.length;
         if (len == 0) return;
 
@@ -332,7 +354,8 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
     function _voteDigest(bytes32 heartbeatKey, uint8 round, uint8 verdict) internal view returns (bytes32) {
         RoundInfo storage r = rounds[heartbeatKey][round];
         if (r.committeeRoot == bytes32(0) || r.snapshotId == 0) revert CommitteeNotStarted();
-        bytes32 structHash = keccak256(abi.encode(VOTE_TYPEHASH, heartbeatKey, round, verdict, r.snapshotId, r.committeeRoot));
+        bytes32 structHash =
+            keccak256(abi.encode(VOTE_TYPEHASH, heartbeatKey, round, verdict, r.snapshotId, r.committeeRoot));
         return _hashTypedDataV4(structHash);
     }
 
@@ -399,7 +422,7 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         if (total > 0) {
             uint256 quorum = Math.mulDiv(r.totalRespondedStake, BPS_DENOMINATOR, total);
             if (quorum >= r.quorumBps) {
-                uint256 validBps   = Math.mulDiv(r.validStake, BPS_DENOMINATOR, total);
+                uint256 validBps = Math.mulDiv(r.validStake, BPS_DENOMINATOR, total);
                 uint256 invalidBps = Math.mulDiv(r.invalidStake, BPS_DENOMINATOR, total);
                 if (validBps >= r.verificationBps) outcome = ISlashingPolicy.Outcome.ValidThreshold;
                 else if (invalidBps >= r.verificationBps) outcome = ISlashingPolicy.Outcome.InvalidThreshold;
@@ -450,10 +473,13 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         _notifySlashing(heartbeatKey, round, r, outcome);
     }
 
-    function _notifySlashing(bytes32 heartbeatKey, uint8 round, RoundInfo storage r, ISlashingPolicy.Outcome outcome) internal {
+    function _notifySlashing(bytes32 heartbeatKey, uint8 round, RoundInfo storage r, ISlashingPolicy.Outcome outcome)
+        internal
+    {
         if (slashingNotified[heartbeatKey][round]) return;
-        bytes memory payload =
-            abi.encodeWithSelector(ISlashingPolicy.onRoundFinalized.selector, heartbeatKey, round, outcome, r.committeeRoot, r.committeeSize);
+        bytes memory payload = abi.encodeWithSelector(
+            ISlashingPolicy.onRoundFinalized.selector, heartbeatKey, round, outcome, r.committeeRoot, r.committeeSize
+        );
         bool ok = _safeSlashingCall(r.slashing, payload);
         if (ok) {
             slashingNotified[heartbeatKey][round] = true;
@@ -534,7 +560,9 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
             uint256 wgt = weights[i];
             uint256 insertAt = 0;
             while (insertAt < recipientCount && recipients[insertAt] < staker) {
-                unchecked { ++insertAt; }
+                unchecked {
+                    ++insertAt;
+                }
             }
 
             if (insertAt < recipientCount && recipients[insertAt] == staker) {
@@ -546,7 +574,9 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
                 }
                 recipients[insertAt] = staker;
                 recipientWeights[insertAt] = wgt;
-                unchecked { ++recipientCount; }
+                unchecked {
+                    ++recipientCount;
+                }
             }
         }
 
@@ -604,12 +634,17 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         }
     }
 
-    function _responded(uint256 p) internal pure returns (bool) { return (p & RESPONDED_BIT) != 0; }
-    function _weight(uint256 p) internal pure returns (uint256) { return (p >> WEIGHT_SHIFT) & WEIGHT_MASK_224; }
+    function _responded(uint256 p) internal pure returns (bool) {
+        return (p & RESPONDED_BIT) != 0;
+    }
+
+    function _weight(uint256 p) internal pure returns (uint256) {
+        return (p >> WEIGHT_SHIFT) & WEIGHT_MASK_224;
+    }
 
     function _isProtocolConfig(address candidate) internal view returns (bool) {
         if (candidate.code.length == 0) return false;
-        (bool ok, ) = candidate.staticcall(abi.encodeWithSelector(IProtocolConfig.quorumBps.selector));
+        (bool ok,) = candidate.staticcall(abi.encodeWithSelector(IProtocolConfig.quorumBps.selector));
         return ok;
     }
 
@@ -674,7 +709,14 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         returns (bool, ISlashingPolicy.Outcome, bytes32, address, uint64, uint32)
     {
         RoundInfo storage r = rounds[heartbeatKey][round];
-        return (r.finalized, roundOutcome[heartbeatKey][round], r.committeeRoot, r.stakingOps, r.jailDurationSec, r.committeeSize);
+        return (
+            r.finalized,
+            roundOutcome[heartbeatKey][round],
+            r.committeeRoot,
+            r.stakingOps,
+            r.jailDurationSec,
+            r.committeeSize
+        );
     }
 
     function nodeCount() external view returns (uint256) {

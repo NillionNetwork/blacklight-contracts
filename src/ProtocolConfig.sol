@@ -29,7 +29,7 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
     uint32 private _committeeSizeGrowthBps;
     uint32 private _maxCommitteeSize;
 
-    uint8  private _maxEscalations;
+    uint8 private _maxEscalations;
 
     uint16 private _quorumBps;
     uint16 private _verificationBps;
@@ -47,7 +47,7 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         uint32 baseCommitteeSize,
         uint32 committeeSizeGrowthBps,
         uint32 maxCommitteeSize,
-        uint8  maxEscalations,
+        uint8 maxEscalations,
         uint16 quorumBps,
         uint16 verificationBps,
         uint256 responseWindow,
@@ -149,29 +149,69 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
     }
 
     // Modules
-    function stakingOps() external view override returns (address) { return _stakingOps; }
-    function committeeSelector() external view override returns (address) { return _selector; }
-    function slashingPolicy() external view override returns (address) { return _slashing; }
-    function rewardPolicy() external view override returns (address) { return _reward; }
+    function stakingOps() external view override returns (address) {
+        return _stakingOps;
+    }
+
+    function committeeSelector() external view override returns (address) {
+        return _selector;
+    }
+
+    function slashingPolicy() external view override returns (address) {
+        return _slashing;
+    }
+
+    function rewardPolicy() external view override returns (address) {
+        return _reward;
+    }
 
     // Committee sizing
-    function baseCommitteeSize() external view override returns (uint32) { return _baseCommitteeSize; }
-    function committeeSizeGrowthBps() external view override returns (uint32) { return _committeeSizeGrowthBps; }
-    function maxCommitteeSize() external view override returns (uint32) { return _maxCommitteeSize; }
+    function baseCommitteeSize() external view override returns (uint32) {
+        return _baseCommitteeSize;
+    }
+
+    function committeeSizeGrowthBps() external view override returns (uint32) {
+        return _committeeSizeGrowthBps;
+    }
+
+    function maxCommitteeSize() external view override returns (uint32) {
+        return _maxCommitteeSize;
+    }
 
     // Escalation
-    function maxEscalations() external view override returns (uint8) { return _maxEscalations; }
+    function maxEscalations() external view override returns (uint8) {
+        return _maxEscalations;
+    }
 
     // Voting / timing
-    function quorumBps() external view override returns (uint16) { return _quorumBps; }
-    function verificationBps() external view override returns (uint16) { return _verificationBps; }
-    function responseWindow() external view override returns (uint256) { return _responseWindow; }
-    function jailDuration() external view override returns (uint256) { return _jailDuration; }
+    function quorumBps() external view override returns (uint16) {
+        return _quorumBps;
+    }
+
+    function verificationBps() external view override returns (uint16) {
+        return _verificationBps;
+    }
+
+    function responseWindow() external view override returns (uint256) {
+        return _responseWindow;
+    }
+
+    function jailDuration() external view override returns (uint256) {
+        return _jailDuration;
+    }
 
     // Misc
-    function maxVoteBatchSize() external view override returns (uint256) { return _maxVoteBatchSize; }
-    function minOperatorStake() external view override returns (uint256) { return _minOperatorStake; }
-    function nodeVersion() external view override returns (string memory) { return _nodeVersion; }
+    function maxVoteBatchSize() external view override returns (uint256) {
+        return _maxVoteBatchSize;
+    }
+
+    function minOperatorStake() external view override returns (uint256) {
+        return _minOperatorStake;
+    }
+
+    function nodeVersion() external view override returns (string memory) {
+        return _nodeVersion;
+    }
 
     // Admin setters
 
@@ -228,7 +268,7 @@ contract ProtocolConfig is IProtocolConfig, Ownable {
         uint32 baseCommitteeSize_,
         uint32 committeeSizeGrowthBps_,
         uint32 maxCommitteeSize_,
-        uint8  maxEscalations_,
+        uint8 maxEscalations_,
         uint16 quorumBps_,
         uint16 verificationBps_,
         uint256 responseWindow_,

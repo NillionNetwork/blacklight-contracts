@@ -438,7 +438,7 @@ contract StakingOperatorsFeeOnTransferTest is Test {
         address operator = address(0xB0B);
         uint256 stakeAmount = 2e18;
         uint256 expectedFee = (stakeAmount * FEE_BPS) / 10_000; // 0.1e18
-        uint256 expectedStake = stakeAmount - expectedFee;       // 1.9e18
+        uint256 expectedStake = stakeAmount - expectedFee; // 1.9e18
 
         feeToken.mint(operator, stakeAmount);
 

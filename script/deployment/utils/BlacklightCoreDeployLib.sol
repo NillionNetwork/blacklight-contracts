@@ -48,13 +48,8 @@ library BlacklightCoreDeployLib {
 
         deployed.manager = new HeartbeatManager(deployed.config, deployer);
 
-        deployed.rewardPolicy = new RewardPolicy(
-            IERC20(address(deployed.token)),
-            address(deployed.manager),
-            deployer,
-            1 minutes,
-            0
-        );
+        deployed.rewardPolicy =
+            new RewardPolicy(IERC20(address(deployed.token)), address(deployed.manager), deployer, 1 minutes, 0);
 
         deployed.config.setRewardPolicy(address(deployed.rewardPolicy));
 

@@ -36,12 +36,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
         _;
     }
 
-    constructor(
-        IStakingOperators _stakingOps,
-        address _admin,
-        uint256 _minCommitteeVP,
-        uint32 _maxCommitteeSize
-    ) {
+    constructor(IStakingOperators _stakingOps, address _admin, uint256 _minCommitteeVP, uint32 _maxCommitteeSize) {
         if (address(_stakingOps) == address(0)) revert ZeroAddress();
         if (_admin == address(0)) revert ZeroAddress();
         if (_minCommitteeVP == 0) revert ZeroMinCommitteeVP();
@@ -74,12 +69,12 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
         maxActiveOperators = newCap;
     }
 
-    function selectCommittee(
-        bytes32 heartbeatKey,
-        uint8 round,
-        uint32 committeeSize,
-        uint64 snapshotId
-    ) external view override returns (address[] memory members) {
+    function selectCommittee(bytes32 heartbeatKey, uint8 round, uint32 committeeSize, uint64 snapshotId)
+        external
+        view
+        override
+        returns (address[] memory members)
+    {
         bytes32 bh = _randomnessSeed(snapshotId);
 
         address[] memory active = stakingOps.getActiveOperators();
@@ -133,9 +128,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
         for (; picked < k; ++picked) {
             if (remainingVP == 0) break;
 
-            bytes32 seed = keccak256(abi.encodePacked(
-                bh, address(this), heartbeatKey, round, snapshotId, picked
-            ));
+            bytes32 seed = keccak256(abi.encodePacked(bh, address(this), heartbeatKey, round, snapshotId, picked));
             uint256 r = uint256(seed) % remainingVP;
 
             uint256 idx1 = _bitFind(bit, r); // 1-based
@@ -151,7 +144,6 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
             stakes[idx0] = 0;
             _bitSub(bit, idx1, w);
             remainingVP -= w;
-
         }
 
         if (picked < k) {
@@ -162,7 +154,9 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
             members = trimmed;
         }
 
-        if (minCommitteeVP != 0 && selectedVP < minCommitteeVP) revert InsufficientCommitteeVP(selectedVP, minCommitteeVP);
+        if (minCommitteeVP != 0 && selectedVP < minCommitteeVP) {
+            revert InsufficientCommitteeVP(selectedVP, minCommitteeVP);
+        }
         return members;
     }
 
@@ -233,7 +227,10 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
         }
     }
 
-    function _heapSiftDown(uint256[] memory heapStake, address[] memory heapAddr, uint256 heapSize, uint256 idx) internal pure {
+    function _heapSiftDown(uint256[] memory heapStake, address[] memory heapAddr, uint256 heapSize, uint256 idx)
+        internal
+        pure
+    {
         while (true) {
             uint256 left = idx * 2 + 1;
             if (left >= heapSize) break;

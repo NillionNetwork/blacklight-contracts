@@ -41,7 +41,7 @@ contract FundOperators is Script {
 
         // Read amounts
         uint256 tokenAmount = vm.envOr("TOKEN_AMOUNT", uint256(100e6)); // 100 tokens (6 decimals)
-        uint256 ethAmount = vm.envOr("ETH_AMOUNT", uint256(1 ether));   // 10 ETH
+        uint256 ethAmount = vm.envOr("ETH_AMOUNT", uint256(1 ether)); // 10 ETH
 
         require(numOperators > 0, "NUM_OPERATORS must be > 0");
         require(stakeTokenAddr != address(0), "Invalid stake token");

@@ -18,7 +18,9 @@ contract HeartbeatManagerConfigTest is BlacklightFixture {
 
     function setUp() public {
         uint256[] memory stakes = new uint256[](6);
-        for (uint256 i = 0; i < stakes.length; i++) stakes[i] = 2e18;
+        for (uint256 i = 0; i < stakes.length; i++) {
+            stakes[i] = 2e18;
+        }
         _deploySystem(
             6,
             stakes,
@@ -53,9 +55,8 @@ contract HeartbeatManagerConfigTest is BlacklightFixture {
     }
 
     function _roundResponseWindow(bytes32 hbKey, uint8 round) internal view returns (uint64) {
-        (bool ok, bytes memory data) = address(manager).staticcall(
-            abi.encodeWithSelector(manager.rounds.selector, hbKey, round)
-        );
+        (bool ok, bytes memory data) =
+            address(manager).staticcall(abi.encodeWithSelector(manager.rounds.selector, hbKey, round));
         require(ok, "rounds call failed");
         uint256 word;
         assembly ("memory-safe") {
@@ -66,7 +67,7 @@ contract HeartbeatManagerConfigTest is BlacklightFixture {
     }
 
     function test_setConfig_onlyOwner_and_appliesToNewRounds() public {
-        (bytes32 hbKey1, uint8 round1, , , ) = _submitRawHTXAndGetRound(1);
+        (bytes32 hbKey1, uint8 round1,,,) = _submitRawHTXAndGetRound(1);
         assertEq(_roundResponseWindow(hbKey1, round1), RESPONSE_WINDOW);
 
         ProtocolConfig newConfig = _buildConfig(RESPONSE_WINDOW + 123);
@@ -79,8 +80,7 @@ contract HeartbeatManagerConfigTest is BlacklightFixture {
         manager.setConfig(newConfig);
         assertEq(address(manager.config()), address(newConfig));
 
-
-        (bytes32 hbKey2, uint8 round2, , , ) = _submitRawHTXAndGetRound(2);
+        (bytes32 hbKey2, uint8 round2,,,) = _submitRawHTXAndGetRound(2);
         assertEq(_roundResponseWindow(hbKey2, round2), RESPONSE_WINDOW + 123);
     }
 }

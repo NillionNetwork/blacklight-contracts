@@ -40,8 +40,12 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     event FeesWithdrawn(uint256 amount, address indexed to);
     event MinStakeUpdated(uint256 oldMinStake, uint256 newMinStake);
     event HarvestFailed(address indexed operatorAddr, bytes reason);
-    event DependenciesUpdated(address oldStaking, address newStaking, address oldReward, address newReward, address oldToken, address newToken);
-    event DefaultModeFeeBpsUpdated(uint256 oldWithdrawBps, uint256 newWithdrawBps, uint256 oldRestakeBps, uint256 newRestakeBps);
+    event DependenciesUpdated(
+        address oldStaking, address newStaking, address oldReward, address newReward, address oldToken, address newToken
+    );
+    event DefaultModeFeeBpsUpdated(
+        uint256 oldWithdrawBps, uint256 newWithdrawBps, uint256 oldRestakeBps, uint256 newRestakeBps
+    );
     event OperatorConfigSynced(address indexed operatorAddr);
 
     // ──────────────────────────────────────────────
@@ -101,7 +105,9 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
 
     /// @notice Atomically updates the dependency tuple, enforcing token compatibility.
     function setDependencies(address stakingOperators_, address rewardPolicy_, address token_) external onlyOwner {
-        if (stakingOperators_ == address(0) || rewardPolicy_ == address(0) || token_ == address(0)) revert ZeroAddress();
+        if (stakingOperators_ == address(0) || rewardPolicy_ == address(0) || token_ == address(0)) {
+            revert ZeroAddress();
+        }
         if (IStakingOperators(stakingOperators_).stakingToken() != token_) revert TokenMismatch();
         if (IRewardPolicyExtended(rewardPolicy_).rewardToken() != token_) revert TokenMismatch();
         emit DependenciesUpdated(stakingOperators, stakingOperators_, rewardPolicy, rewardPolicy_, token, token_);
@@ -170,7 +176,10 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     }
 
     /// @notice Rescues stranded ERC-20 tokens from a NodeOperator (e.g. after token migration).
-    function rescueOperatorTokens(address operatorAddr, IERC20 rescueToken, address to, uint256 amount) external onlyOwner {
+    function rescueOperatorTokens(address operatorAddr, IERC20 rescueToken, address to, uint256 amount)
+        external
+        onlyOwner
+    {
         if (operatorAddr == address(0)) revert ZeroAddress();
         if (operatorToNode[operatorAddr] == address(0)) revert InvalidNodeOperator();
         NodeOperator(operatorAddr).rescueTokens(rescueToken, to, amount);
@@ -307,7 +316,8 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         uint256 end = offset + limit;
         if (end > total) end = total;
         for (uint256 i = offset; i < end;) {
-            try INodeOperator(_allOperators[i]).harvestRewards() {} catch (bytes memory reason) {
+            try INodeOperator(_allOperators[i]).harvestRewards() {}
+            catch (bytes memory reason) {
                 emit HarvestFailed(_allOperators[i], reason);
             }
             unchecked {

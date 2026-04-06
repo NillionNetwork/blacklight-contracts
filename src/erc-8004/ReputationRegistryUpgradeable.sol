@@ -9,7 +9,6 @@ interface IIdentityRegistry {
 }
 
 contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
-
     int128 private constant MAX_ABS_VALUE = 1e38;
 
     event NewFeedback(
@@ -26,11 +25,7 @@ contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
         bytes32 feedbackHash
     );
 
-    event FeedbackRevoked(
-        uint256 indexed agentId,
-        address indexed clientAddress,
-        uint64 indexed feedbackIndex
-    );
+    event FeedbackRevoked(uint256 indexed agentId, address indexed clientAddress, uint64 indexed feedbackIndex);
 
     event ResponseAppended(
         uint256 indexed agentId,
@@ -42,9 +37,9 @@ contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
     );
 
     struct Feedback {
-        int128 value;          // 16 bytes
-        uint8 valueDecimals;   // 1 byte  (packed with value + isRevoked)
-        bool isRevoked;        // 1 byte  (packed with value + valueDecimals)
+        int128 value; // 16 bytes
+        uint8 valueDecimals; // 1 byte  (packed with value + isRevoked)
+        bool isRevoked; // 1 byte  (packed with value + valueDecimals)
         string tag1;
         string tag2;
     }
@@ -107,7 +102,9 @@ contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
 
         // SECURITY: Prevent self-feedback from owner and operators
         // Also reverts with ERC721NonexistentToken if agent doesn't exist
-        require(!IIdentityRegistry(_identityRegistry).isAuthorizedOrOwner(msg.sender, agentId), "Self-feedback not allowed");
+        require(
+            !IIdentityRegistry(_identityRegistry).isAuthorizedOrOwner(msg.sender, agentId), "Self-feedback not allowed"
+        );
 
         ReputationRegistryStorage storage $ = _getReputationRegistryStorage();
 
@@ -115,13 +112,8 @@ contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
         uint64 currentIndex = ++$._lastIndex[agentId][msg.sender];
 
         // Store feedback
-        $._feedback[agentId][msg.sender][currentIndex] = Feedback({
-            value: value,
-            valueDecimals: valueDecimals,
-            tag1: tag1,
-            tag2: tag2,
-            isRevoked: false
-        });
+        $._feedback[agentId][msg.sender][currentIndex] =
+            Feedback({value: value, valueDecimals: valueDecimals, tag1: tag1, tag2: tag2, isRevoked: false});
 
         // track new client
         if (!$._clientExists[agentId][msg.sender]) {
@@ -129,7 +121,19 @@ contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
             $._clientExists[agentId][msg.sender] = true;
         }
 
-        emit NewFeedback(agentId, msg.sender, currentIndex, value, valueDecimals, tag1, tag1, tag2, endpoint, feedbackURI, feedbackHash);
+        emit NewFeedback(
+            agentId,
+            msg.sender,
+            currentIndex,
+            value,
+            valueDecimals,
+            tag1,
+            tag1,
+            tag2,
+            endpoint,
+            feedbackURI,
+            feedbackHash
+        );
     }
 
     function revokeFeedback(uint256 agentId, uint64 feedbackIndex) external {
@@ -183,13 +187,11 @@ contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
         return (f.value, f.valueDecimals, f.tag1, f.tag2, f.isRevoked);
     }
 
-    function getSummary(
-        uint256 agentId,
-        address[] calldata clientAddresses,
-        string calldata tag1,
-        string calldata tag2
-    ) external view returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals) {
-
+    function getSummary(uint256 agentId, address[] calldata clientAddresses, string calldata tag1, string calldata tag2)
+        external
+        view
+        returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals)
+    {
         ReputationRegistryStorage storage $ = _getReputationRegistryStorage();
         address[] memory clientList;
         if (clientAddresses.length > 0) {
@@ -213,10 +215,8 @@ contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
             for (uint64 j = 1; j <= lastIdx; j++) {
                 Feedback storage fb = $._feedback[agentId][clientList[i]][j];
                 if (fb.isRevoked) continue;
-                if (emptyHash != tag1Hash &&
-                    tag1Hash != keccak256(bytes(fb.tag1))) continue;
-                if (emptyHash != tag2Hash &&
-                    tag2Hash != keccak256(bytes(fb.tag2))) continue;
+                if (emptyHash != tag1Hash && tag1Hash != keccak256(bytes(fb.tag1))) continue;
+                if (emptyHash != tag2Hash && tag2Hash != keccak256(bytes(fb.tag2))) continue;
 
                 // Normalize to 18 decimals (WAD)
                 // `valueDecimals` is bounded to <= 18 on write; keep math signed.
@@ -255,15 +255,19 @@ contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
         string calldata tag1,
         string calldata tag2,
         bool includeRevoked
-    ) external view returns (
-        address[] memory clients,
-        uint64[] memory feedbackIndexes,
-        int128[] memory values,
-        uint8[] memory valueDecimals,
-        string[] memory tag1s,
-        string[] memory tag2s,
-        bool[] memory revokedStatuses
-    ) {
+    )
+        external
+        view
+        returns (
+            address[] memory clients,
+            uint64[] memory feedbackIndexes,
+            int128[] memory values,
+            uint8[] memory valueDecimals,
+            string[] memory tag1s,
+            string[] memory tag2s,
+            bool[] memory revokedStatuses
+        )
+    {
         ReputationRegistryStorage storage $ = _getReputationRegistryStorage();
         address[] memory clientList;
         if (clientAddresses.length > 0) {
@@ -282,10 +286,8 @@ contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
             for (uint64 j = 1; j <= lastIdx; j++) {
                 Feedback storage fb = $._feedback[agentId][clientList[i]][j];
                 if (!includeRevoked && fb.isRevoked) continue;
-                if (emptyHash != tag1Hash &&
-                    tag1Hash != keccak256(bytes(fb.tag1))) continue;
-                if (emptyHash != tag2Hash &&
-                    tag2Hash != keccak256(bytes(fb.tag2))) continue;
+                if (emptyHash != tag1Hash && tag1Hash != keccak256(bytes(fb.tag1))) continue;
+                if (emptyHash != tag2Hash && tag2Hash != keccak256(bytes(fb.tag2))) continue;
                 totalCount++;
             }
         }
@@ -306,10 +308,8 @@ contract ReputationRegistryUpgradeable is OwnableUpgradeable, UUPSUpgradeable {
             for (uint64 j = 1; j <= lastIdx; j++) {
                 Feedback storage fb = $._feedback[agentId][clientList[i]][j];
                 if (!includeRevoked && fb.isRevoked) continue;
-                if (emptyHash != tag1Hash &&
-                    tag1Hash != keccak256(bytes(fb.tag1))) continue;
-                if (emptyHash != tag2Hash &&
-                    tag2Hash != keccak256(bytes(fb.tag2))) continue;
+                if (emptyHash != tag1Hash && tag1Hash != keccak256(bytes(fb.tag1))) continue;
+                if (emptyHash != tag2Hash && tag2Hash != keccak256(bytes(fb.tag2))) continue;
 
                 clients[idx] = clientList[i];
                 feedbackIndexes[idx] = j;

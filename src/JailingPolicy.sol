@@ -89,10 +89,15 @@ contract JailingPolicy is ISlashingPolicy {
     function onRoundFinalized(
         bytes32 heartbeatKey,
         uint8 round,
-        Outcome /*outcome*/,
-        bytes32 /*committeeRoot*/,
+        Outcome,
+        /*outcome*/
+        bytes32,
+        /*committeeRoot*/
         uint32 /*committeeSize*/
-    ) external override {
+    )
+        external
+        override
+    {
         if (msg.sender != heartbeatManager) revert NotHeartbeatManager();
         recordRound(heartbeatKey, round);
     }
@@ -136,7 +141,9 @@ contract JailingPolicy is ISlashingPolicy {
         RoundRecord memory rr = roundRecord[heartbeatKey][round];
         if (!rr.set) revert RoundNotFinalized();
         if (rr.jailDurationSec == 0) revert ZeroJailDuration();
-        if (sortedMembers.length != rr.committeeSize) revert CommitteeSizeMismatch(sortedMembers.length, rr.committeeSize);
+        if (sortedMembers.length != rr.committeeSize) {
+            revert CommitteeSizeMismatch(sortedMembers.length, rr.committeeSize);
+        }
 
         // Ensure strictly ascending + build leaves
         uint256 n = sortedMembers.length;
@@ -166,7 +173,11 @@ contract JailingPolicy is ISlashingPolicy {
         }
     }
 
-    function _isJailable(bytes32 heartbeatKey, uint8 round, Outcome outcome, address operator) internal view returns (bool) {
+    function _isJailable(bytes32 heartbeatKey, uint8 round, Outcome outcome, address operator)
+        internal
+        view
+        returns (bool)
+    {
         uint256 packed = IHeartbeatManagerPolicyView(heartbeatManager).getVotePacked(heartbeatKey, round, operator);
         bool responded = (packed & RESPONDED_BIT) != 0;
 

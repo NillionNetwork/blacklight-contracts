@@ -19,6 +19,9 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
+      - name: Check formatting
+        run: forge fmt --check
+
       - name: Build
         run: forge build
 

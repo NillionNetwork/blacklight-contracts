@@ -35,7 +35,7 @@ contract RewardPolicy is IRewardPolicy, Ownable, ReentrancyGuard {
 
     uint256 public streamRemaining;
     uint256 public streamRatePerSecondWad;
-    uint64  public streamEnd;
+    uint64 public streamEnd;
 
     uint256 public epochDuration;
     uint256 public maxPayoutPerFinalize;
@@ -81,7 +81,9 @@ contract RewardPolicy is IRewardPolicy, Ownable, ReentrancyGuard {
         sync();
     }
 
-    function spendableBudget() external view override returns (uint256) { return _spendableBudget; }
+    function spendableBudget() external view override returns (uint256) {
+        return _spendableBudget;
+    }
 
     function reservedBalance() external view returns (uint256) {
         return totalOutstandingRewards + streamRemaining + _spendableBudget;
@@ -91,7 +93,9 @@ contract RewardPolicy is IRewardPolicy, Ownable, ReentrancyGuard {
         uint256 bal = rewardToken.balanceOf(address(this));
         uint256 reserved = totalOutstandingRewards + streamRemaining + _spendableBudget;
         if (bal <= reserved) return 0;
-        unchecked { return bal - reserved; }
+        unchecked {
+            return bal - reserved;
+        }
     }
 
     function setEpochDuration(uint256 newDuration) external onlyOwner {
@@ -167,9 +171,15 @@ contract RewardPolicy is IRewardPolicy, Ownable, ReentrancyGuard {
     function _updateUnlock() internal {
         uint64 nowTs = uint64(block.timestamp);
         uint64 last = lastUpdate;
-        if (last == 0) { lastUpdate = nowTs; return; }
+        if (last == 0) {
+            lastUpdate = nowTs;
+            return;
+        }
         if (nowTs <= last) return;
-        if (streamRemaining == 0) { lastUpdate = nowTs; return; }
+        if (streamRemaining == 0) {
+            lastUpdate = nowTs;
+            return;
+        }
 
         uint256 elapsed = uint256(nowTs - last);
         if (streamRatePerSecondWad != 0) {
@@ -218,12 +228,11 @@ contract RewardPolicy is IRewardPolicy, Ownable, ReentrancyGuard {
         emit StreamUpdated(streamRemaining, streamRatePerSecondWad, streamEnd);
     }
 
-    function accrueWeights(
-        bytes32 heartbeatKey,
-        uint8 round,
-        address[] calldata recipients,
-        uint256[] calldata weights
-    ) external override whenAccountingHealthy {
+    function accrueWeights(bytes32 heartbeatKey, uint8 round, address[] calldata recipients, uint256[] calldata weights)
+        external
+        override
+        whenAccountingHealthy
+    {
         if (msg.sender != heartbeatManager) revert NotHeartbeatManager();
         if (processed[heartbeatKey][round]) revert AlreadyProcessed();
         if (recipients.length != weights.length) revert LengthMismatch();

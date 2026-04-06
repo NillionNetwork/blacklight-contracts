@@ -13,12 +13,12 @@ import "./TESTToken.sol";
 contract BatchFunder is Ownable {
     TESTToken public immutable token;
     StakingOperators public immutable staking;
-    
+
     constructor(address _token, address _staking) Ownable(msg.sender) {
         token = TESTToken(_token);
         staking = StakingOperators(_staking);
     }
-    
+
     /// @notice Batch mint tokens to multiple addresses
     /// @dev Requires this contract to be the token owner
     /// @param recipients Array of addresses to mint to
@@ -28,18 +28,18 @@ contract BatchFunder is Ownable {
             token.mint(recipients[i], amount);
         }
     }
-    
+
     /// @notice Batch send ETH to multiple addresses
     /// @param recipients Array of addresses to send ETH to
     /// @param amount Amount of ETH to send to each address
     function batchSendETH(address[] calldata recipients, uint256 amount) external payable onlyOwner {
         require(msg.value >= recipients.length * amount, "Insufficient ETH");
-        
+
         for (uint256 i = 0; i < recipients.length; i++) {
             (bool success,) = recipients[i].call{value: amount}("");
             require(success, "ETH transfer failed");
         }
-        
+
         // Refund excess ETH
         uint256 excess = msg.value - (recipients.length * amount);
         if (excess > 0) {
@@ -47,28 +47,28 @@ contract BatchFunder is Ownable {
             require(success, "Refund failed");
         }
     }
-    
+
     /// @notice Combined batch operation: mint tokens and send ETH to all recipients
     /// @dev Requires this contract to be the token owner
     /// @param recipients Array of addresses
     /// @param tokenAmount Amount of tokens to mint to each
     /// @param ethAmount Amount of ETH to send to each
-    function batchFund(
-        address[] calldata recipients,
-        uint256 tokenAmount,
-        uint256 ethAmount
-    ) external payable onlyOwner {
+    function batchFund(address[] calldata recipients, uint256 tokenAmount, uint256 ethAmount)
+        external
+        payable
+        onlyOwner
+    {
         require(msg.value >= recipients.length * ethAmount, "Insufficient ETH");
-        
+
         for (uint256 i = 0; i < recipients.length; i++) {
             // Mint tokens
             token.mint(recipients[i], tokenAmount);
-            
+
             // Send ETH
             (bool success,) = recipients[i].call{value: ethAmount}("");
             require(success, "ETH transfer failed");
         }
-        
+
         // Refund excess ETH
         uint256 excess = msg.value - (recipients.length * ethAmount);
         if (excess > 0) {
@@ -76,7 +76,7 @@ contract BatchFunder is Ownable {
             require(success, "Refund failed");
         }
     }
-    
+
     /// @notice Batch fund and stake: mint tokens to this contract, stake to operators, send ETH
     /// @dev This is the most efficient method - reduces funding+staking to 4 total transactions.
     ///      The BatchFunder becomes the staker for all operators (holds the tokens).
@@ -84,11 +84,11 @@ contract BatchFunder is Ownable {
     /// @param operators Array of operator addresses to fund and stake to
     /// @param tokenAmount Amount of tokens to stake per operator
     /// @param ethAmount Amount of ETH to send per operator
-    function batchFundAndStake(
-        address[] calldata operators,
-        uint256 tokenAmount,
-        uint256 ethAmount
-    ) external payable onlyOwner {
+    function batchFundAndStake(address[] calldata operators, uint256 tokenAmount, uint256 ethAmount)
+        external
+        payable
+        onlyOwner
+    {
         require(msg.value >= operators.length * ethAmount, "Insufficient ETH");
 
         // Mint all tokens to this contract

@@ -27,7 +27,9 @@ contract NodeOperatorTest is BlacklightFixture {
         // Deploy a reward policy that uses stakeToken (same token for staking & rewards)
         RewardPolicy sameTokenRewardPolicy =
             new RewardPolicy(IERC20(address(stakeToken)), address(manager), governance, 1 days, 0);
-        config.setModules(address(stakingOps), address(selector), address(jailingPolicy), address(sameTokenRewardPolicy));
+        config.setModules(
+            address(stakingOps), address(selector), address(jailingPolicy), address(sameTokenRewardPolicy)
+        );
 
         nodeOp = new NodeOperator(
             address(this),
@@ -37,7 +39,7 @@ contract NodeOperatorTest is BlacklightFixture {
             address(sameTokenRewardPolicy),
             address(stakeToken),
             0, // withdrawFeeBps
-            0  // restakeFeeBps
+            0 // restakeFeeBps
         );
 
         vm.prank(node1);
@@ -169,11 +171,8 @@ contract NodeOperatorTest is BlacklightFixture {
     }
 
     function test_defaultRewardBehavior_isAutoRestake() public view {
-        assertEq(
-            uint256(nodeOp.rewardBehavior()), uint256(uint8(INodeOperator.RewardBehavior.AutoRestake))
-        );
+        assertEq(uint256(nodeOp.rewardBehavior()), uint256(uint8(INodeOperator.RewardBehavior.AutoRestake)));
     }
-
 
     function test_setModeFeeBps_setsModeFees() public {
         nodeOp.setModeFeeBps(1200, 800);
@@ -237,16 +236,12 @@ contract NodeOperatorTest is BlacklightFixture {
     function test_constructorRevertsIfFeeAboveCap() public {
         vm.expectRevert(NodeOperator.FeeTooHigh.selector);
         new NodeOperator(
-            address(this), STAKE_AMOUNT, node1,
-            address(stakingOps), address(0), address(stakeToken),
-            5001, 0
+            address(this), STAKE_AMOUNT, node1, address(stakingOps), address(0), address(stakeToken), 5001, 0
         );
 
         vm.expectRevert(NodeOperator.FeeTooHigh.selector);
         new NodeOperator(
-            address(this), STAKE_AMOUNT, node1,
-            address(stakingOps), address(0), address(stakeToken),
-            0, 5001
+            address(this), STAKE_AMOUNT, node1, address(stakingOps), address(0), address(stakeToken), 0, 5001
         );
     }
 
@@ -475,7 +470,7 @@ contract NodeOperatorTest is BlacklightFixture {
 
         // Should use withdrawFeeBps (30%), not restakeFeeBps (15%)
         uint256 expectedFee = (rewards * 3000) / 10000; // 300e6
-        uint256 expectedNet = rewards - expectedFee;      // 700e6
+        uint256 expectedNet = rewards - expectedFee; // 700e6
         assertEq(stakeToken.balanceOf(user1), expectedNet);
         assertEq(stakeToken.balanceOf(address(this)) - ownerBefore, expectedFee);
         // Not restaked
