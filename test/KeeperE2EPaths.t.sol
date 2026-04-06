@@ -7,13 +7,7 @@ import "./helpers/BlacklightFixture.sol";
 import "../src/Interfaces.sol";
 
 contract RevertingSlashingPolicy is ISlashingPolicy {
-    function onRoundFinalized(
-        bytes32,
-        uint8,
-        Outcome,
-        bytes32,
-        uint32
-    ) external pure override {
+    function onRoundFinalized(bytes32, uint8, Outcome, bytes32, uint32) external pure override {
         revert("slashing-revert");
     }
 }
@@ -93,7 +87,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
         _deploySystem(2, stakes, 2, 2, 5_000, 5_000, 10, 100, 0);
         _fundRewards(1e18);
 
-        (bytes32 heartbeatKey, uint8 round,, , address[] memory members) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,, address[] memory members) = _submitRawHTXAndGetRound();
         address voter = members[0];
         address nonvoter = members[1];
 
@@ -128,7 +122,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
         _deploySystem(2, stakes, 2, 2, 5_000, 5_000, 10, 100, 0);
         _fundRewards(1e18);
 
-        (bytes32 heartbeatKey, uint8 round,, , address[] memory members) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,, address[] memory members) = _submitRawHTXAndGetRound();
         address voter = members[0];
 
         _vote(heartbeatKey, round, members, voter, 2);
@@ -149,7 +143,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
 
         _deploySystem(2, stakes, 2, 2, 6_000, 8_000, 10, 100, 0);
 
-        (bytes32 heartbeatKey, uint8 round,, ,) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,,) = _submitRawHTXAndGetRound();
         _finalizeDefault(heartbeatKey, round);
 
         (HeartbeatManager.HeartbeatStatus status,) = _heartbeatStatus(heartbeatKey);
@@ -164,7 +158,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
 
         _deploySystem(2, stakes, 2, 2, 5_000, 5_000, 10, 100, 1);
 
-        (bytes32 heartbeatKey, uint8 round,, ,) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,,) = _submitRawHTXAndGetRound();
         _finalizeDefault(heartbeatKey, round);
 
         (HeartbeatManager.HeartbeatStatus status, uint8 currentRound) = _heartbeatStatus(heartbeatKey);
@@ -174,12 +168,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
         (uint32 committeeSize, uint64 snapshotId, bytes32 committeeRoot,) = _roundMeta(heartbeatKey, 2);
         assertTrue(committeeRoot != bytes32(0));
 
-        address[] memory members2 = selector.selectCommittee(
-            heartbeatKey,
-            2,
-            committeeSize,
-            snapshotId
-        );
+        address[] memory members2 = selector.selectCommittee(heartbeatKey, 2, committeeSize, snapshotId);
         _sortMembers(members2);
 
         _vote(heartbeatKey, 2, members2, members2[0], 1);
@@ -197,7 +186,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
 
         _deploySystem(2, stakes, 2, 2, 5_000, 5_000, 10, 100, 1);
 
-        (bytes32 heartbeatKey, uint8 round,, ,) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,,) = _submitRawHTXAndGetRound();
         _finalizeDefault(heartbeatKey, round);
         _finalizeRound(heartbeatKey, 2, 1);
 
@@ -212,7 +201,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
 
         _deploySystem(2, stakes, 2, 2, 5_000, 5_000, 10, 100, 0);
 
-        (bytes32 heartbeatKey, uint8 round,, , address[] memory members) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,, address[] memory members) = _submitRawHTXAndGetRound();
         _vote(heartbeatKey, round, members, members[0], 1);
         _finalizeDefault(heartbeatKey, round);
 
@@ -250,7 +239,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
         _deploySystem(2, stakes, 2, 2, 5_000, 5_000, 10, 100, 0);
         _fundRewards(1e18);
 
-        (bytes32 heartbeatKey, uint8 round,, , address[] memory members) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,, address[] memory members) = _submitRawHTXAndGetRound();
         _vote(heartbeatKey, round, members, members[0], 1);
         _finalizeDefault(heartbeatKey, round);
 
@@ -269,7 +258,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
         _deploySystem(2, stakes, 2, 2, 5_000, 5_000, 10, 100, 0);
         _fundRewards(1e18);
 
-        (bytes32 heartbeatKey, uint8 round,, , address[] memory members) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,, address[] memory members) = _submitRawHTXAndGetRound();
         _vote(heartbeatKey, round, members, members[0], 1);
         _finalizeDefault(heartbeatKey, round);
 
@@ -289,7 +278,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
         _deploySystem(2, stakes, 2, 2, 5_000, 5_000, 10, 100, 0);
         _fundRewards(1e18);
 
-        (bytes32 heartbeatKey, uint8 round,, , address[] memory members) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,, address[] memory members) = _submitRawHTXAndGetRound();
         _vote(heartbeatKey, round, members, members[0], 1);
         _finalizeDefault(heartbeatKey, round);
 
@@ -309,7 +298,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
         RevertingSlashingPolicy reverter = new RevertingSlashingPolicy();
         config.setModules(address(stakingOps), address(selector), address(reverter), address(rewardPolicy));
 
-        (bytes32 heartbeatKey, uint8 round,, , address[] memory members) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,, address[] memory members) = _submitRawHTXAndGetRound();
         _vote(heartbeatKey, round, members, members[0], 1);
         _finalizeDefault(heartbeatKey, round);
 
@@ -325,7 +314,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
         _deploySystem(1, stakes, 1, 1, 5_000, 5_000, 10, 100, 0);
         manager.setSlashingGasLimit(1);
 
-        (bytes32 heartbeatKey, uint8 round,, , address[] memory members) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,, address[] memory members) = _submitRawHTXAndGetRound();
         _vote(heartbeatKey, round, members, members[0], 1);
         _finalizeDefault(heartbeatKey, round);
 
@@ -338,9 +327,9 @@ contract KeeperE2EPathsTest is BlacklightFixture {
 
         _deploySystem(1, stakes, 1, 1, 5_000, 5_000, 10, 100, 0);
 
-        (bytes32 heartbeatKey, uint8 round,, ,) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,,) = _submitRawHTXAndGetRound();
 
-        (, , , uint64 deadline) = _roundMeta(heartbeatKey, round);
+        (,,, uint64 deadline) = _roundMeta(heartbeatKey, round);
         vm.warp(uint256(deadline) + 1);
 
         vm.expectRevert(HeartbeatManager.RawHTXHashMismatch.selector);
@@ -354,7 +343,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
 
         _deploySystem(2, stakes, 2, 2, 5_000, 5_000, 10, 100, 0);
 
-        (bytes32 heartbeatKey, uint8 round,, , address[] memory members) = _submitRawHTXAndGetRound();
+        (bytes32 heartbeatKey, uint8 round,,, address[] memory members) = _submitRawHTXAndGetRound();
         bytes32[] memory wrongProof = _proofForMember(heartbeatKey, round, members, members[0]);
 
         vm.expectRevert(HeartbeatManager.NotInCommittee.selector);
@@ -396,11 +385,7 @@ contract KeeperE2EPathsTest is BlacklightFixture {
         uint32 committeeSize = config.baseCommitteeSize();
         uint256 totalStake = stakes[0] + stakes[1];
         vm.expectRevert(
-            abi.encodeWithSelector(
-                WeightedCommitteeSelector.InsufficientCommitteeVP.selector,
-                totalStake,
-                10e18
-            )
+            abi.encodeWithSelector(WeightedCommitteeSelector.InsufficientCommitteeVP.selector, totalStake, 10e18)
         );
         selector.selectCommittee(heartbeatKey, 1, committeeSize, snapshotId);
     }

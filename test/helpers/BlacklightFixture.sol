@@ -142,7 +142,7 @@ abstract contract BlacklightFixture is Test {
                 if (hbKey != heartbeatKey) continue;
 
                 bytes memory emittedRaw;
-                (round, root, snapshotId, , , members, emittedRaw) =
+                (round, root, snapshotId,,, members, emittedRaw) =
                     abi.decode(logs[i].data, (uint8, bytes32, uint64, uint64, uint64, address[], bytes));
 
                 assertEq(members.length, expectedMembers.length);
@@ -178,7 +178,7 @@ abstract contract BlacklightFixture is Test {
                 if (hbKey != heartbeatKey) continue;
 
                 bytes memory emittedRaw;
-                (round, root, snapshotId, , , members, emittedRaw) =
+                (round, root, snapshotId,,, members, emittedRaw) =
                     abi.decode(logs[i].data, (uint8, bytes32, uint64, uint64, uint64, address[], bytes));
 
                 assertEq(members.length, expectedMembers.length);
@@ -254,7 +254,7 @@ abstract contract BlacklightFixture is Test {
     }
 
     function _finalizeRound(bytes32 heartbeatKey, uint8 round, uint64 rawId) internal {
-        (, , , , , , , , , uint64 deadline, , , , , , , , , ) = manager.rounds(heartbeatKey, round);
+        (,,,,,,,,, uint64 deadline,,,,,,,,,) = manager.rounds(heartbeatKey, round);
         vm.warp(uint256(deadline) + 1);
         manager.escalateOrExpire(heartbeatKey, _defaultRawHTX(rawId));
     }
@@ -263,7 +263,14 @@ abstract contract BlacklightFixture is Test {
         _finalizeRound(heartbeatKey, round, 1);
     }
 
-    function _batchedVote(bytes32 heartbeatKey, uint8 round, address[] memory members, uint256 pk, address voter, uint8 verdict) internal {
+    function _batchedVote(
+        bytes32 heartbeatKey,
+        uint8 round,
+        address[] memory members,
+        uint256 pk,
+        address voter,
+        uint8 verdict
+    ) internal {
         bytes32[] memory proof = _proofForMember(heartbeatKey, round, members, voter);
         bytes32 digest = manager.voteDigest(heartbeatKey, round, verdict);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);

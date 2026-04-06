@@ -55,7 +55,8 @@ contract DeployNodeManagers is Script {
 
         uint256[] memory managedNodeKeys;
         (out.nodeFactory, out.managedNodes, managedNodeKeys) = BlacklightNodeOpsLib.deployNodeFactoryAndManagedNodes(
-            vm, deployNodeFactory,
+            vm,
+            deployNodeFactory,
             deployer,
             StakingOperators(stakingOpsAddr),
             RewardPolicy(rewardPolicyAddr),
@@ -135,18 +136,16 @@ contract DeployNodeManagers is Script {
         if (out.managedNodes.length != 0) {
             output = string.concat(output, "MANAGED_NODES=", _joinAddresses(out.managedNodes), "\n");
             for (uint256 i = 0; i < out.managedNodes.length; i++) {
-                output = string.concat(
-                    output, "MANAGED_NODE_", vm.toString(i), "=", vm.toString(out.managedNodes[i]), "\n"
-                );
+                output =
+                    string.concat(output, "MANAGED_NODE_", vm.toString(i), "=", vm.toString(out.managedNodes[i]), "\n");
             }
         }
 
         if (out.nodeManagers.length != 0) {
             output = string.concat(output, "NODE_MANAGERS=", _joinAddresses(out.nodeManagers), "\n");
             for (uint256 i = 0; i < out.nodeManagers.length; i++) {
-                output = string.concat(
-                    output, "NODE_MANAGER_", vm.toString(i), "=", vm.toString(out.nodeManagers[i]), "\n"
-                );
+                output =
+                    string.concat(output, "NODE_MANAGER_", vm.toString(i), "=", vm.toString(out.nodeManagers[i]), "\n");
             }
         }
 

@@ -34,18 +34,20 @@ library ERC8004DeployLib {
         deployed.identityImpl = new IdentityRegistryUpgradeable();
         bytes memory initData = abi.encodeCall(HardhatMinimalUUPS.initialize, (address(0)));
         ERC1967Proxy identityProxy = new ERC1967Proxy(address(deployed.minimalImpl), initData);
-        HardhatMinimalUUPS(address(identityProxy)).upgradeToAndCall(
-            address(deployed.identityImpl), abi.encodeCall(IdentityRegistryUpgradeable.initialize, ())
-        );
+        HardhatMinimalUUPS(address(identityProxy))
+            .upgradeToAndCall(
+                address(deployed.identityImpl), abi.encodeCall(IdentityRegistryUpgradeable.initialize, ())
+            );
         deployed.identity = IdentityRegistryUpgradeable(address(identityProxy));
 
         deployed.validationImpl = new ValidationRegistryUpgradeable();
         initData = abi.encodeCall(HardhatMinimalUUPS.initialize, (address(deployed.identity)));
         ERC1967Proxy validationProxy = new ERC1967Proxy(address(deployed.minimalImpl), initData);
-        HardhatMinimalUUPS(address(validationProxy)).upgradeToAndCall(
-            address(deployed.validationImpl),
-            abi.encodeCall(ValidationRegistryUpgradeable.initialize, (address(deployed.identity)))
-        );
+        HardhatMinimalUUPS(address(validationProxy))
+            .upgradeToAndCall(
+                address(deployed.validationImpl),
+                abi.encodeCall(ValidationRegistryUpgradeable.initialize, (address(deployed.identity)))
+            );
         deployed.validation = ValidationRegistryUpgradeable(address(validationProxy));
 
         if (heartbeatManager != address(0)) {
@@ -70,10 +72,11 @@ library ERC8004DeployLib {
             deployed.reputationImpl = new ReputationRegistryUpgradeable();
             initData = abi.encodeCall(HardhatMinimalUUPS.initialize, (address(deployed.identity)));
             ERC1967Proxy reputationProxy = new ERC1967Proxy(address(deployed.minimalImpl), initData);
-            HardhatMinimalUUPS(address(reputationProxy)).upgradeToAndCall(
-                address(deployed.reputationImpl),
-                abi.encodeCall(ReputationRegistryUpgradeable.initialize, (address(deployed.identity)))
-            );
+            HardhatMinimalUUPS(address(reputationProxy))
+                .upgradeToAndCall(
+                    address(deployed.reputationImpl),
+                    abi.encodeCall(ReputationRegistryUpgradeable.initialize, (address(deployed.identity)))
+                );
             deployed.reputation = ReputationRegistryUpgradeable(address(reputationProxy));
         }
 

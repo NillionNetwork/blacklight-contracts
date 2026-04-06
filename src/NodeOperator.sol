@@ -102,14 +102,12 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         if (nodeAddress_ == address(0)) revert ZeroAddress();
         if (withdrawFeeBps_ > MAX_FEE_BPS || restakeFeeBps_ > MAX_FEE_BPS) revert FeeTooHigh();
         if (token_ != address(0)) {
-            if (
-                stakingOperators_ != address(0)
-                    && IStakingOperators(stakingOperators_).stakingToken() != token_
-            ) revert TokenMismatch();
-            if (
-                rewardPolicy_ != address(0)
-                    && IRewardPolicyExtended(rewardPolicy_).rewardToken() != token_
-            ) revert TokenMismatch();
+            if (stakingOperators_ != address(0) && IStakingOperators(stakingOperators_).stakingToken() != token_) {
+                revert TokenMismatch();
+            }
+            if (rewardPolicy_ != address(0) && IRewardPolicyExtended(rewardPolicy_).rewardToken() != token_) {
+                revert TokenMismatch();
+            }
         }
         minStake = minStake_;
         stakingOperators = IStakingOperators(stakingOperators_);
@@ -181,7 +179,6 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         emit NodeAssigned(user, nodeAddress);
     }
 
-
     function _ensureStakeConfigured() internal view {
         if (address(stakingOperators) == address(0) || address(token) == address(0)) {
             revert ContractNotConfigured();
@@ -233,7 +230,7 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         stakingOperators.requestUnstake(nodeAddress, amount);
 
         // If fully exiting, force rewards to withdraw mode
-        if (stakingOperators.stakeOf(nodeAddress) == 0){
+        if (stakingOperators.stakeOf(nodeAddress) == 0) {
             _rewardBehavior = RewardBehavior.WithdrawToUser;
         }
 
@@ -277,7 +274,6 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
     }
 
     function setRewardBehavior(RewardBehavior behavior) external override onlyOwner {
-
         // Prevent re-enabling AutoRestake on a fully-exited operator
         if (behavior == RewardBehavior.AutoRestake && stakingOperators.stakeOf(nodeAddress) == 0) {
             revert BelowMinimumStake();
@@ -287,7 +283,6 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
         _rewardBehavior = behavior;
         emit RewardBehaviorUpdated(nodeUser, uint8(oldBehavior), uint8(behavior));
     }
-
 
     /// @dev No-op if `user` is already assigned; reverts if a different user is bound.
     function assignUser(address user) external override onlyOwner {
@@ -323,8 +318,7 @@ contract NodeOperator is INodeOperator, Ownable, ReentrancyGuard {
 
         _ensureStakeConfigured();
         // Jailed nodes cannot restake; treat as withdraw so the correct fee applies
-        bool restake = _rewardBehavior == RewardBehavior.AutoRestake
-            && !stakingOperators.isJailed(nodeAddress);
+        bool restake = _rewardBehavior == RewardBehavior.AutoRestake && !stakingOperators.isJailed(nodeAddress);
         uint256 feeBpsToUse = restake ? restakeFeeBps : withdrawFeeBps;
         uint256 fee = (harvestableRewards * feeBpsToUse) / 10000;
         // Fees are sent to owner() which is the NodeOperatorFactory; the factory

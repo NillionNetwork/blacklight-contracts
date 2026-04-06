@@ -4,7 +4,11 @@ pragma solidity ^0.8.22;
 /// @notice Test-only Merkle utilities compatible with OpenZeppelin MerkleProof.
 /// @dev Pair hashing is commutative (sorted), matching OZ MerkleProof and the on-chain contracts.
 library MerkleTestUtils {
-    function leaf(address heartbeatManager, bytes32 heartbeatKey, uint8 round, address member) internal pure returns (bytes32) {
+    function leaf(address heartbeatManager, bytes32 heartbeatKey, uint8 round, address member)
+        internal
+        pure
+        returns (bytes32)
+    {
         return keccak256(abi.encodePacked(bytes1(0xA1), heartbeatManager, heartbeatKey, round, member));
     }
 

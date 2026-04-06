@@ -16,7 +16,10 @@ library BlacklightNodeOpsLib {
         StakingOperators stakingOps,
         RewardPolicy rewardPolicy,
         TESTToken token
-    ) internal returns (NodeOperatorFactory nodeFactory, address[] memory managedNodes, uint256[] memory managedNodeKeys) {
+    )
+        internal
+        returns (NodeOperatorFactory nodeFactory, address[] memory managedNodes, uint256[] memory managedNodeKeys)
+    {
         managedNodes = new address[](0);
         managedNodeKeys = new uint256[](0);
         if (!deployNodeFactory) return (nodeFactory, managedNodes, managedNodeKeys);

@@ -13,7 +13,10 @@ contract MockL1StandardBridge {
         uint256 amount,
         uint32, /* l2Gas */
         bytes calldata /* data */
-    ) external payable {
+    )
+        external
+        payable
+    {
         IERC20(l1Token).transferFrom(msg.sender, address(this), amount);
         emit Deposit(l1Token, to, amount);
     }

@@ -83,7 +83,9 @@ contract WeightedCommitteeSelectorTest is Test {
         // Determine the 8 highest-stake operators
         bool[20] memory isTop;
         // Top are ops[12..19] because stake increases linearly
-        for (uint256 i = 12; i < 20; i++) isTop[i] = true;
+        for (uint256 i = 12; i < 20; i++) {
+            isTop[i] = true;
+        }
 
         for (uint256 i = 0; i < members.length; i++) {
             bool found;
@@ -158,7 +160,10 @@ contract WeightedCommitteeSelectorTest is Test {
 
         // Only the top 1000 stakers (highest indexes) should be eligible.
         bool[1200] memory isTop;
-        for (uint256 i = 200; i < 1200; i++) isTop[i] = true; // indexes 200..1199 are the 1000 highest stakes
+        // indexes 200..1199 are the 1000 highest stakes
+        for (uint256 i = 200; i < 1200; i++) {
+            isTop[i] = true;
+        }
 
         for (uint256 i = 0; i < members.length; i++) {
             bool found;
@@ -190,11 +195,9 @@ contract WeightedCommitteeSelectorTest is Test {
         vm.roll(block.number + 1);
         uint64 snap = stakingOps.snapshot();
 
-        vm.expectRevert(abi.encodeWithSelector(
-            WeightedCommitteeSelector.InsufficientCommitteeVP.selector,
-            totalVp,
-            newMin
-        ));
+        vm.expectRevert(
+            abi.encodeWithSelector(WeightedCommitteeSelector.InsufficientCommitteeVP.selector, totalVp, newMin)
+        );
         selector.selectCommittee(bytes32("hbKey"), 1, 4, snap);
     }
 

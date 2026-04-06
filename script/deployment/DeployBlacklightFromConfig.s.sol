@@ -13,10 +13,7 @@ import {BlacklightOutputLib} from "./utils/BlacklightOutputLib.sol";
 contract DeployBlacklightFromConfig is Script {
     using stdJson for string;
 
-    function run(string calldata configPath)
-        external
-        returns (BlacklightTypes.DeployedContracts memory deployed)
-    {
+    function run(string calldata configPath) external returns (BlacklightTypes.DeployedContracts memory deployed) {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
 
