@@ -65,13 +65,13 @@ contract HeartbeatRewardSnapshotStakerTest is BlacklightFixture {
         _deploySystem(
             2,
             stakes,
-            2,    // baseCommitteeSize
-            2,    // maxCommitteeSize
+            2, // baseCommitteeSize
+            2, // maxCommitteeSize
             5000, // quorumBps (50%)
             5000, // verificationBps (50%)
             1 days,
             7 days,
-            0     // maxEscalations
+            0 // maxEscalations
         );
     }
 
@@ -82,7 +82,7 @@ contract HeartbeatRewardSnapshotStakerTest is BlacklightFixture {
         vm.prank(governance);
         rewardPolicy.fund(1_000e18);
 
-        (bytes32 hbKey, uint8 round, , , address[] memory members) = _submitPointerAndGetRound();
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
 
         // Vote valid with first member
         _vote(hbKey, round, members, members[0], 1);
