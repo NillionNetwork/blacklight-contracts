@@ -504,6 +504,63 @@ contract StakingOperatorsTest is Test {
         vm.expectRevert();
         stakingOps.pruneEverActiveOperators(toPrune);
     }
+
+    function test_compactCheckpoints_prunesOldEntries() public {
+        address op = address(0xB0B);
+        stakeToken.mint(op, 10e18);
+
+        vm.startPrank(op);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(op, 1e18);
+        stakingOps.registerOperator("ipfs://x");
+        vm.stopPrank();
+
+        vm.prank(admin);
+        stakingOps.setSnapshotter(address(this));
+
+        // Create several checkpoints across blocks
+        vm.roll(10);
+        stakingOps.snapshot();
+
+        vm.prank(op);
+        stakingOps.stakeTo(op, 1e18); // checkpoint at block 10
+
+        vm.roll(20);
+        stakingOps.snapshot();
+
+        vm.prank(op);
+        stakingOps.stakeTo(op, 1e18); // checkpoint at block 20
+
+        vm.roll(30);
+        stakingOps.snapshot();
+
+        vm.prank(op);
+        stakingOps.stakeTo(op, 1e18); // checkpoint at block 30
+
+        vm.roll(40);
+        uint64 currentSnap = stakingOps.snapshot();
+
+        // Verify pre-compaction values
+        assertEq(stakingOps.stakeAt(op, currentSnap), 4e18);
+
+        // Compact: prune everything before block 25
+        address[] memory operators = new address[](1);
+        operators[0] = op;
+        vm.prank(admin);
+        stakingOps.compactCheckpoints(operators, 25);
+
+        // Post-compaction: current snapshot still returns correct value
+        assertEq(stakingOps.stakeAt(op, currentSnap), 4e18);
+        // Queries at or after the cutoff should still work
+        assertEq(stakingOps.stakeAt(op, 30), 4e18);
+    }
+
+    function test_compactCheckpoints_onlyAdmin() public {
+        address[] memory operators = new address[](0);
+        vm.prank(address(0xBEEF));
+        vm.expectRevert();
+        stakingOps.compactCheckpoints(operators, 10);
+    }
 }
 
 contract StakingOperatorsFeeOnTransferTest is Test {

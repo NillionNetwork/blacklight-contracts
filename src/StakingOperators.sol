@@ -608,6 +608,94 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         return ckpts[low].staker;
     }
 
+    /// @notice Compact checkpoint arrays by discarding entries older than `beforeBlock`.
+    /// @dev For each operator the last entry at or before `beforeBlock` is kept as the first
+    ///      element so that queries at `beforeBlock` and later remain correct. Entries strictly
+    ///      before that anchor are deleted, freeing storage and reducing binary-search cost.
+    function compactCheckpoints(address[] calldata operators, uint64 beforeBlock)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        for (uint256 i = 0; i < operators.length; ++i) {
+            address op = operators[i];
+            _compactStakeCheckpoints(op, beforeBlock);
+            _compactActiveCheckpoints(op, beforeBlock);
+            _compactStakerCheckpoints(op, beforeBlock);
+        }
+    }
+
+    function _compactStakeCheckpoints(address op, uint64 beforeBlock) internal {
+        StakeCheckpoint[] storage ckpts = _stakeCheckpoints[op];
+        uint256 len = ckpts.length;
+        if (len <= 1) return;
+        if (ckpts[0].fromBlock >= beforeBlock) return;
+
+        uint256 low = 0;
+        uint256 high = len - 1;
+        while (high > low) {
+            uint256 mid = Math.ceilDiv(high + low, 2);
+            if (ckpts[mid].fromBlock < beforeBlock) low = mid;
+            else high = mid - 1;
+        }
+        if (low == 0) return;
+
+        uint256 newLen = len - low;
+        for (uint256 j = 0; j < newLen; ++j) {
+            ckpts[j] = ckpts[low + j];
+        }
+        for (uint256 j = len; j > newLen; --j) {
+            ckpts.pop();
+        }
+    }
+
+    function _compactActiveCheckpoints(address op, uint64 beforeBlock) internal {
+        ActiveCheckpoint[] storage ckpts = _activeCheckpoints[op];
+        uint256 len = ckpts.length;
+        if (len <= 1) return;
+        if (ckpts[0].fromBlock >= beforeBlock) return;
+
+        uint256 low = 0;
+        uint256 high = len - 1;
+        while (high > low) {
+            uint256 mid = Math.ceilDiv(high + low, 2);
+            if (ckpts[mid].fromBlock < beforeBlock) low = mid;
+            else high = mid - 1;
+        }
+        if (low == 0) return;
+
+        uint256 newLen = len - low;
+        for (uint256 j = 0; j < newLen; ++j) {
+            ckpts[j] = ckpts[low + j];
+        }
+        for (uint256 j = len; j > newLen; --j) {
+            ckpts.pop();
+        }
+    }
+
+    function _compactStakerCheckpoints(address op, uint64 beforeBlock) internal {
+        StakerCheckpoint[] storage ckpts = _stakerCheckpoints[op];
+        uint256 len = ckpts.length;
+        if (len <= 1) return;
+        if (ckpts[0].fromBlock >= beforeBlock) return;
+
+        uint256 low = 0;
+        uint256 high = len - 1;
+        while (high > low) {
+            uint256 mid = Math.ceilDiv(high + low, 2);
+            if (ckpts[mid].fromBlock < beforeBlock) low = mid;
+            else high = mid - 1;
+        }
+        if (low == 0) return;
+
+        uint256 newLen = len - low;
+        for (uint256 j = 0; j < newLen; ++j) {
+            ckpts[j] = ckpts[low + j];
+        }
+        for (uint256 j = len; j > newLen; --j) {
+            ckpts.pop();
+        }
+    }
+
     /// @notice Remove fully-withdrawn, deregistered operators from the ever-active list to reduce
     ///         gas cost of `getActiveOperatorsAt` over time.
     function pruneEverActiveOperators(address[] calldata operators) external onlyRole(DEFAULT_ADMIN_ROLE) {
