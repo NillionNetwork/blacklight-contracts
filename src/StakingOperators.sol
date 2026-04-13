@@ -564,6 +564,11 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         return ckpts[low].isActive;
     }
 
+    /// @notice Returns operators that were active at the given snapshot block.
+    /// @dev Snapshot semantics: an operator who deactivates *after* the snapshot block will still
+    ///      appear in the result. If missed assignments later carry slashing/jailing consequences,
+    ///      the protocol layer should treat a post-snapshot deactivation as an absence rather than
+    ///      a slashable offence.
     function getActiveOperatorsAt(uint64 snapshotId) external view override returns (address[] memory) {
         uint256 total = _everActiveOperators.length;
         address[] memory temp = new address[](total);
