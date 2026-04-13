@@ -36,6 +36,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     error InvalidMaxActiveOperators();
     error TooManyActiveOperators();
     error InvalidProtocolConfig(address candidate);
+    error OperatorNotPrunable();
 
     struct StakeCheckpoint {
         uint64 fromBlock;
@@ -101,6 +102,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     mapping(address => StakerCheckpoint[]) private _stakerCheckpoints;
     address[] private _everActiveOperators;
     mapping(address => bool) private _wasEverActive;
+    mapping(address => uint256) private _everActiveIndexPlus1;
 
     event StakedTo(address indexed staker, address indexed operator, uint256 amount);
     event UnstakeRequested(address indexed staker, address indexed operator, uint256 amount, uint64 releaseTime);
@@ -118,6 +120,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     event StakerApproved(address indexed operator, address indexed staker);
     event MaxActiveOperatorsUpdated(uint256 oldCap, uint256 newCap);
     event SnapshotCreated(uint64 snapshotId, address indexed caller);
+    event EverActiveOperatorPruned(address indexed operator);
 
     constructor(IERC20 token_, address admin, uint256 initialUnstakeDelay) {
         if (address(token_) == address(0)) revert ZeroAddress();
@@ -257,6 +260,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
             if (!_wasEverActive[operator]) {
                 _wasEverActive[operator] = true;
                 _everActiveOperators.push(operator);
+                _everActiveIndexPlus1[operator] = _everActiveOperators.length;
             }
             emit ActiveStatusUpdated(operator, true);
         } else if (!shouldBeActive && isInSet) {
@@ -602,6 +606,33 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
             else high = mid - 1;
         }
         return ckpts[low].staker;
+    }
+
+    /// @notice Remove fully-withdrawn, deregistered operators from the ever-active list to reduce
+    ///         gas cost of `getActiveOperatorsAt` over time.
+    function pruneEverActiveOperators(address[] calldata operators) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        for (uint256 i = 0; i < operators.length; ++i) {
+            address op = operators[i];
+            if (
+                _operators[op].active || _operatorStake[op] != 0 || _unbondings[op].tranches.length != 0
+                    || _activeIndexPlus1[op] != 0
+            ) {
+                revert OperatorNotPrunable();
+            }
+            uint256 idxPlus1 = _everActiveIndexPlus1[op];
+            if (idxPlus1 == 0) continue;
+            uint256 idx = idxPlus1 - 1;
+            uint256 last = _everActiveOperators.length - 1;
+            if (idx != last) {
+                address swapped = _everActiveOperators[last];
+                _everActiveOperators[idx] = swapped;
+                _everActiveIndexPlus1[swapped] = idx + 1;
+            }
+            _everActiveOperators.pop();
+            _everActiveIndexPlus1[op] = 0;
+            _wasEverActive[op] = false;
+            emit EverActiveOperatorPruned(op);
+        }
     }
 
     function _isProtocolConfig(address candidate) internal view returns (bool) {
