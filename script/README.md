@@ -181,6 +181,49 @@ Example:
 - `--resume` reuses existing deployments only when bytecode is present.
 - `--dry-run` disables broadcast and verification.
 
+## Deploy NillionTokenOwner (H-3 Mitigation)
+
+Locks down direct minting on an existing `NillionToken` by deploying a constrained
+owner contract (`NillionTokenOwner`) and transferring token ownership to it.
+
+The constrained owner exposes `setMinter()` and `transferTokenOwnership()` but
+has no `mint()` function, so only whitelisted minters (e.g. `EmissionsController`)
+can mint. No existing contracts need redeployment.
+
+### Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `PRIVATE_KEY` | yes | Private key of the current token owner |
+| `L1_NIL_ADDRESS` | yes | Address of the deployed `NillionToken` |
+| `TOKEN_OWNER_ADMIN` | no | Admin of the new owner contract (defaults to deployer) |
+
+### Dry Run
+
+```bash
+L1_NIL_ADDRESS=<token> PRIVATE_KEY=<key> \
+  forge script script/deployment/DeployNillionTokenOwner.s.sol \
+  --rpc-url <rpc>
+```
+
+### Broadcast
+
+```bash
+L1_NIL_ADDRESS=<token> PRIVATE_KEY=<key> \
+  forge script script/deployment/DeployNillionTokenOwner.s.sol \
+  --rpc-url <rpc> --broadcast
+```
+
+### Fork Test
+
+Verify the migration e2e against a live token (no funds needed):
+
+```bash
+L1_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com \
+  L1_NIL_ADDRESS=0xfa718d54f31bcf49CcaC3a79C276fa87d11E2F44 \
+  forge test --match-contract NillionTokenOwnerForkTest -vv
+```
+
 ## Related Docs
 
 - Operational runbook: `docs/deployment-runbook.md`
