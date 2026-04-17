@@ -36,10 +36,21 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     error InvalidMaxActiveOperators();
     error TooManyActiveOperators();
     error InvalidProtocolConfig(address candidate);
+    error OperatorNotPrunable();
 
     struct StakeCheckpoint {
         uint64 fromBlock;
         uint224 stake;
+    }
+
+    struct ActiveCheckpoint {
+        uint64 fromBlock;
+        bool isActive;
+    }
+
+    struct StakerCheckpoint {
+        uint64 fromBlock;
+        address staker;
     }
 
     struct Unbonding {
@@ -87,6 +98,12 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     address[] private _activeOperators;
     mapping(address => uint256) private _activeIndexPlus1;
 
+    mapping(address => ActiveCheckpoint[]) private _activeCheckpoints;
+    mapping(address => StakerCheckpoint[]) private _stakerCheckpoints;
+    address[] private _everActiveOperators;
+    mapping(address => bool) private _wasEverActive;
+    mapping(address => uint256) private _everActiveIndexPlus1;
+
     event StakedTo(address indexed staker, address indexed operator, uint256 amount);
     event UnstakeRequested(address indexed staker, address indexed operator, uint256 amount, uint64 releaseTime);
     event UnstakedWithdrawn(address indexed staker, address indexed operator, uint256 amount);
@@ -103,6 +120,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
     event StakerApproved(address indexed operator, address indexed staker);
     event MaxActiveOperatorsUpdated(uint256 oldCap, uint256 newCap);
     event SnapshotCreated(uint64 snapshotId, address indexed caller);
+    event EverActiveOperatorPruned(address indexed operator);
 
     constructor(IERC20 token_, address admin, uint256 initialUnstakeDelay) {
         if (address(token_) == address(0)) revert ZeroAddress();
@@ -238,6 +256,12 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
             if (_activeOperators.length >= maxActiveOperators) revert TooManyActiveOperators();
             _activeOperators.push(operator);
             _activeIndexPlus1[operator] = _activeOperators.length;
+            _writeActiveCheckpoint(operator, true);
+            if (!_wasEverActive[operator]) {
+                _wasEverActive[operator] = true;
+                _everActiveOperators.push(operator);
+                _everActiveIndexPlus1[operator] = _everActiveOperators.length;
+            }
             emit ActiveStatusUpdated(operator, true);
         } else if (!shouldBeActive && isInSet) {
             uint256 idx = idxPlus1 - 1;
@@ -249,6 +273,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
             }
             _activeOperators.pop();
             _activeIndexPlus1[operator] = 0;
+            _writeActiveCheckpoint(operator, false);
             emit ActiveStatusUpdated(operator, false);
         }
     }
@@ -293,6 +318,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
                 revert UnauthorizedStaker();
             }
             operatorStaker[operator] = msg.sender;
+            _writeStakerCheckpoint(operator, msg.sender);
             _unbondings[operator].staker = msg.sender;
             if (approved != address(0)) approvedStaker[operator] = address(0);
         } else if (currentStaker != msg.sender) {
@@ -342,6 +368,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         if (len == 0) {
             if (_operatorStake[operator] != 0) revert NoUnbonding();
             operatorStaker[operator] = address(0);
+            _writeStakerCheckpoint(operator, address(0));
             u.staker = address(0);
             _setActiveInSet(operator, _computeIsActive(operator));
             return;
@@ -365,6 +392,7 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
         address staker = u.staker;
         if (u.tranches.length == 0 && _operatorStake[operator] == 0) {
             operatorStaker[operator] = address(0);
+            _writeStakerCheckpoint(operator, address(0));
             u.staker = address(0);
         }
 
@@ -497,6 +525,201 @@ contract StakingOperators is IStakingOperators, AccessControl, ReentrancyGuard, 
             ckpts[len - 1].stake = boundedStake;
         } else {
             ckpts.push(StakeCheckpoint({fromBlock: blockNum, stake: boundedStake}));
+        }
+    }
+
+    function _writeActiveCheckpoint(address operator, bool active) internal {
+        ActiveCheckpoint[] storage ckpts = _activeCheckpoints[operator];
+        uint64 blockNum = uint64(block.number);
+        uint256 len = ckpts.length;
+        if (len != 0 && ckpts[len - 1].fromBlock == blockNum) {
+            ckpts[len - 1].isActive = active;
+        } else {
+            ckpts.push(ActiveCheckpoint({fromBlock: blockNum, isActive: active}));
+        }
+    }
+
+    function _writeStakerCheckpoint(address operator, address staker) internal {
+        StakerCheckpoint[] storage ckpts = _stakerCheckpoints[operator];
+        uint64 blockNum = uint64(block.number);
+        uint256 len = ckpts.length;
+        if (len != 0 && ckpts[len - 1].fromBlock == blockNum) {
+            ckpts[len - 1].staker = staker;
+        } else {
+            ckpts.push(StakerCheckpoint({fromBlock: blockNum, staker: staker}));
+        }
+    }
+
+    function _activeAt(address operator, uint64 snapshotId) internal view returns (bool) {
+        ActiveCheckpoint[] storage ckpts = _activeCheckpoints[operator];
+        uint256 len = ckpts.length;
+        if (len == 0) return false;
+        if (ckpts[0].fromBlock > snapshotId) return false;
+
+        uint256 high = len - 1;
+        if (ckpts[high].fromBlock <= snapshotId) return ckpts[high].isActive;
+
+        uint256 low = 0;
+        while (high > low) {
+            uint256 mid = Math.ceilDiv(high + low, 2);
+            if (ckpts[mid].fromBlock <= snapshotId) low = mid;
+            else high = mid - 1;
+        }
+        return ckpts[low].isActive;
+    }
+
+    /// @notice Returns operators that were active at the given snapshot block.
+    /// @dev Snapshot semantics: an operator who deactivates *after* the snapshot block will still
+    ///      appear in the result. If missed assignments later carry slashing/jailing consequences,
+    ///      the protocol layer should treat a post-snapshot deactivation as an absence rather than
+    ///      a slashable offence.
+    function getActiveOperatorsAt(uint64 snapshotId) external view override returns (address[] memory) {
+        uint256 total = _everActiveOperators.length;
+        address[] memory temp = new address[](total);
+        uint256 count;
+        for (uint256 i = 0; i < total; ++i) {
+            address op = _everActiveOperators[i];
+            if (_activeAt(op, snapshotId)) {
+                temp[count++] = op;
+            }
+        }
+        address[] memory result = new address[](count);
+        for (uint256 i = 0; i < count; ++i) {
+            result[i] = temp[i];
+        }
+        return result;
+    }
+
+    function operatorStakerAt(address operator, uint64 snapshotId) external view override returns (address) {
+        StakerCheckpoint[] storage ckpts = _stakerCheckpoints[operator];
+        uint256 len = ckpts.length;
+        if (len == 0) return address(0);
+        if (ckpts[0].fromBlock > snapshotId) return address(0);
+
+        uint256 high = len - 1;
+        if (ckpts[high].fromBlock <= snapshotId) return ckpts[high].staker;
+
+        uint256 low = 0;
+        while (high > low) {
+            uint256 mid = Math.ceilDiv(high + low, 2);
+            if (ckpts[mid].fromBlock <= snapshotId) low = mid;
+            else high = mid - 1;
+        }
+        return ckpts[low].staker;
+    }
+
+    /// @notice Compact checkpoint arrays by discarding entries older than `beforeBlock`.
+    /// @dev For each operator the last entry at or before `beforeBlock` is kept as the first
+    ///      element so that queries at `beforeBlock` and later remain correct. Entries strictly
+    ///      before that anchor are deleted, freeing storage and reducing binary-search cost.
+    function compactCheckpoints(address[] calldata operators, uint64 beforeBlock)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        for (uint256 i = 0; i < operators.length; ++i) {
+            address op = operators[i];
+            _compactStakeCheckpoints(op, beforeBlock);
+            _compactActiveCheckpoints(op, beforeBlock);
+            _compactStakerCheckpoints(op, beforeBlock);
+        }
+    }
+
+    function _compactStakeCheckpoints(address op, uint64 beforeBlock) internal {
+        StakeCheckpoint[] storage ckpts = _stakeCheckpoints[op];
+        uint256 len = ckpts.length;
+        if (len <= 1) return;
+        if (ckpts[0].fromBlock >= beforeBlock) return;
+
+        uint256 low = 0;
+        uint256 high = len - 1;
+        while (high > low) {
+            uint256 mid = Math.ceilDiv(high + low, 2);
+            if (ckpts[mid].fromBlock < beforeBlock) low = mid;
+            else high = mid - 1;
+        }
+        if (low == 0) return;
+
+        uint256 newLen = len - low;
+        for (uint256 j = 0; j < newLen; ++j) {
+            ckpts[j] = ckpts[low + j];
+        }
+        for (uint256 j = len; j > newLen; --j) {
+            ckpts.pop();
+        }
+    }
+
+    function _compactActiveCheckpoints(address op, uint64 beforeBlock) internal {
+        ActiveCheckpoint[] storage ckpts = _activeCheckpoints[op];
+        uint256 len = ckpts.length;
+        if (len <= 1) return;
+        if (ckpts[0].fromBlock >= beforeBlock) return;
+
+        uint256 low = 0;
+        uint256 high = len - 1;
+        while (high > low) {
+            uint256 mid = Math.ceilDiv(high + low, 2);
+            if (ckpts[mid].fromBlock < beforeBlock) low = mid;
+            else high = mid - 1;
+        }
+        if (low == 0) return;
+
+        uint256 newLen = len - low;
+        for (uint256 j = 0; j < newLen; ++j) {
+            ckpts[j] = ckpts[low + j];
+        }
+        for (uint256 j = len; j > newLen; --j) {
+            ckpts.pop();
+        }
+    }
+
+    function _compactStakerCheckpoints(address op, uint64 beforeBlock) internal {
+        StakerCheckpoint[] storage ckpts = _stakerCheckpoints[op];
+        uint256 len = ckpts.length;
+        if (len <= 1) return;
+        if (ckpts[0].fromBlock >= beforeBlock) return;
+
+        uint256 low = 0;
+        uint256 high = len - 1;
+        while (high > low) {
+            uint256 mid = Math.ceilDiv(high + low, 2);
+            if (ckpts[mid].fromBlock < beforeBlock) low = mid;
+            else high = mid - 1;
+        }
+        if (low == 0) return;
+
+        uint256 newLen = len - low;
+        for (uint256 j = 0; j < newLen; ++j) {
+            ckpts[j] = ckpts[low + j];
+        }
+        for (uint256 j = len; j > newLen; --j) {
+            ckpts.pop();
+        }
+    }
+
+    /// @notice Remove fully-withdrawn, deregistered operators from the ever-active list to reduce
+    ///         gas cost of `getActiveOperatorsAt` over time.
+    function pruneEverActiveOperators(address[] calldata operators) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        for (uint256 i = 0; i < operators.length; ++i) {
+            address op = operators[i];
+            if (
+                _operators[op].active || _operatorStake[op] != 0 || _unbondings[op].tranches.length != 0
+                    || _activeIndexPlus1[op] != 0
+            ) {
+                revert OperatorNotPrunable();
+            }
+            uint256 idxPlus1 = _everActiveIndexPlus1[op];
+            if (idxPlus1 == 0) continue;
+            uint256 idx = idxPlus1 - 1;
+            uint256 last = _everActiveOperators.length - 1;
+            if (idx != last) {
+                address swapped = _everActiveOperators[last];
+                _everActiveOperators[idx] = swapped;
+                _everActiveIndexPlus1[swapped] = idx + 1;
+            }
+            _everActiveOperators.pop();
+            _everActiveIndexPlus1[op] = 0;
+            _wasEverActive[op] = false;
+            emit EverActiveOperatorPruned(op);
         }
     }
 

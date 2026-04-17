@@ -552,7 +552,7 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
 
         for (uint256 i = 0; i < n; ++i) {
             address op = sortedVoters[i];
-            address staker = stakingOps.operatorStaker(op);
+            address staker = stakingOps.operatorStakerAt(op, r.snapshotId);
             if (staker == address(0)) {
                 staker = op;
             }

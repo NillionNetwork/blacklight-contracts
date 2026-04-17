@@ -395,6 +395,172 @@ contract StakingOperatorsTest is Test {
         vm.expectRevert(StakingOperators.InvalidAddress.selector);
         stakingOps.setHeartbeatManager(address(0));
     }
+
+    function test_pruneEverActiveOperators_removesFullyWithdrawn() public {
+        address op1 = address(0xB0B1);
+        address op2 = address(0xB0B2);
+        address op3 = address(0xB0B3);
+
+        vm.prank(admin);
+        stakingOps.setMaxActiveOperators(3);
+
+        // Register 3 operators
+        for (uint256 i = 0; i < 3; i++) {
+            address op = i == 0 ? op1 : (i == 1 ? op2 : op3);
+            stakeToken.mint(op, 2e18);
+            vm.startPrank(op);
+            stakeToken.approve(address(stakingOps), type(uint256).max);
+            stakingOps.stakeTo(op, 1e18);
+            stakingOps.registerOperator("ipfs://x");
+            vm.stopPrank();
+        }
+
+        // op2 deactivates, unstakes everything, withdraws
+        vm.prank(op2);
+        stakingOps.deactivateOperator();
+        vm.prank(op2);
+        stakingOps.requestUnstake(op2, 1e18);
+        vm.warp(block.timestamp + 1 days + 1);
+        vm.prank(op2);
+        stakingOps.withdrawUnstaked(op2);
+
+        // All 3 still in ever-active list, snapshot query scans all 3
+        vm.prank(admin);
+        stakingOps.setSnapshotter(address(this));
+        vm.roll(block.number + 2);
+        uint64 snap = stakingOps.snapshot();
+        address[] memory activeAt = stakingOps.getActiveOperatorsAt(snap);
+        assertEq(activeAt.length, 2); // op1 and op3
+
+        // Prune: op2 is fully withdrawn and deregistered
+        address[] memory toPrune = new address[](1);
+        toPrune[0] = op2;
+        vm.prank(admin);
+        stakingOps.pruneEverActiveOperators(toPrune);
+
+        // After pruning, snapshot query should still work correctly
+        address[] memory activeAt2 = stakingOps.getActiveOperatorsAt(snap);
+        assertEq(activeAt2.length, 2);
+    }
+
+    function test_pruneEverActiveOperators_revertsForActiveOperator() public {
+        address op1 = address(0xB0B1);
+        stakeToken.mint(op1, 2e18);
+
+        vm.startPrank(op1);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(op1, 1e18);
+        stakingOps.registerOperator("ipfs://x");
+        vm.stopPrank();
+
+        address[] memory toPrune = new address[](1);
+        toPrune[0] = op1;
+        vm.prank(admin);
+        vm.expectRevert(StakingOperators.OperatorNotPrunable.selector);
+        stakingOps.pruneEverActiveOperators(toPrune);
+    }
+
+    function test_pruneEverActiveOperators_revertsForOperatorWithStake() public {
+        address op1 = address(0xB0B1);
+        stakeToken.mint(op1, 2e18);
+
+        vm.startPrank(op1);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(op1, 1e18);
+        stakingOps.registerOperator("ipfs://x");
+        stakingOps.deactivateOperator();
+        vm.stopPrank();
+
+        address[] memory toPrune = new address[](1);
+        toPrune[0] = op1;
+        vm.prank(admin);
+        vm.expectRevert(StakingOperators.OperatorNotPrunable.selector);
+        stakingOps.pruneEverActiveOperators(toPrune);
+    }
+
+    function test_pruneEverActiveOperators_revertsForOperatorWithUnbonding() public {
+        address op1 = address(0xB0B1);
+        stakeToken.mint(op1, 2e18);
+
+        vm.startPrank(op1);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(op1, 1e18);
+        stakingOps.registerOperator("ipfs://x");
+        stakingOps.deactivateOperator();
+        stakingOps.requestUnstake(op1, 1e18);
+        vm.stopPrank();
+
+        // Has unbonding tranches, not prunable
+        address[] memory toPrune = new address[](1);
+        toPrune[0] = op1;
+        vm.prank(admin);
+        vm.expectRevert(StakingOperators.OperatorNotPrunable.selector);
+        stakingOps.pruneEverActiveOperators(toPrune);
+    }
+
+    function test_pruneEverActiveOperators_onlyAdmin() public {
+        address[] memory toPrune = new address[](0);
+        vm.prank(address(0xBEEF));
+        vm.expectRevert();
+        stakingOps.pruneEverActiveOperators(toPrune);
+    }
+
+    function test_compactCheckpoints_prunesOldEntries() public {
+        address op = address(0xB0B);
+        stakeToken.mint(op, 10e18);
+
+        vm.startPrank(op);
+        stakeToken.approve(address(stakingOps), type(uint256).max);
+        stakingOps.stakeTo(op, 1e18);
+        stakingOps.registerOperator("ipfs://x");
+        vm.stopPrank();
+
+        vm.prank(admin);
+        stakingOps.setSnapshotter(address(this));
+
+        // Create several checkpoints across blocks
+        vm.roll(10);
+        stakingOps.snapshot();
+
+        vm.prank(op);
+        stakingOps.stakeTo(op, 1e18); // checkpoint at block 10
+
+        vm.roll(20);
+        stakingOps.snapshot();
+
+        vm.prank(op);
+        stakingOps.stakeTo(op, 1e18); // checkpoint at block 20
+
+        vm.roll(30);
+        stakingOps.snapshot();
+
+        vm.prank(op);
+        stakingOps.stakeTo(op, 1e18); // checkpoint at block 30
+
+        vm.roll(40);
+        uint64 currentSnap = stakingOps.snapshot();
+
+        // Verify pre-compaction values
+        assertEq(stakingOps.stakeAt(op, currentSnap), 4e18);
+
+        // Compact: prune everything before block 25
+        address[] memory operators = new address[](1);
+        operators[0] = op;
+        vm.prank(admin);
+        stakingOps.compactCheckpoints(operators, 25);
+
+        // Post-compaction: current snapshot still returns correct value
+        assertEq(stakingOps.stakeAt(op, currentSnap), 4e18);
+        // Queries at or after the cutoff should still work
+        assertEq(stakingOps.stakeAt(op, 30), 4e18);
+    }
+
+    function test_compactCheckpoints_onlyAdmin() public {
+        address[] memory operators = new address[](0);
+        vm.prank(address(0xBEEF));
+        vm.expectRevert();
+        stakingOps.compactCheckpoints(operators, 10);
+    }
 }
 
 contract StakingOperatorsFeeOnTransferTest is Test {

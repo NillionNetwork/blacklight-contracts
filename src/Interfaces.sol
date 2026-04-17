@@ -88,7 +88,9 @@ interface IStakingOperators {
     function isJailed(address operator) external view returns (bool);
 
     function getActiveOperators() external view returns (address[] memory);
+    function getActiveOperatorsAt(uint64 snapshotId) external view returns (address[] memory);
     function isActiveOperator(address operator) external view returns (bool);
+    function operatorStakerAt(address operator, uint64 snapshotId) external view returns (address);
 
     function getOperatorInfo(address operator) external view returns (OperatorInfo memory);
 

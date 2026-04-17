@@ -77,7 +77,7 @@ contract WeightedCommitteeSelector is ICommitteeSelector {
     {
         bytes32 bh = _randomnessSeed(snapshotId);
 
-        address[] memory active = stakingOps.getActiveOperators();
+        address[] memory active = stakingOps.getActiveOperatorsAt(snapshotId);
         uint256 n = active.length;
         if (n == 0) revert NoOperators();
 
