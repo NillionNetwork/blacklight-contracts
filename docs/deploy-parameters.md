@@ -132,8 +132,12 @@ Constructor args:
   - Immutable: yes.
 - `L2_TOKEN` (address): L2 token address.
   - Immutable: yes.
-- `L2_RECIPIENT` (address): recipient on L2 (typically RewardPolicy).
-  - Immutable: yes (redeploy to change).
+- `REMAINDER_SINK_ADDR` (address): destination for any undistributed emission remainder.
+  - Immutable: no (owner can call `setRemainderSink`).
+- `REMAINDER_SINK_IS_L2` (bool): whether the remainder sink is on L2.
+  - Immutable: no (owner can call `setRemainderSink`).
+- `RECIPIENT_ADDRS` / `RECIPIENT_BPS` / `RECIPIENT_IS_L2`: initial recipient split.
+  - Immutable: no (owner can add, remove, or update recipients).
 - `EPOCH_START` (uint256): start timestamp for emissions schedule.
   - Immutable: yes.
 - `EPOCH_DURATION` (uint256): seconds per emission epoch.
@@ -144,7 +148,7 @@ Constructor args:
   - Immutable: yes.
 - `EMISSIONS_SCHEDULE` (uint256[]): per-epoch emission amounts.
   - Immutable: yes.
-- `OWNER` (address): owner who can update `L2_GAS_LIMIT`.
+- `OWNER` (address): owner who can update `L2_GAS_LIMIT`, recipients, and remainder sink.
   - Immutable: no (ownership can be transferred).
 
 ## Script Parameters (Deployment-Time Only)
