@@ -11,6 +11,48 @@ interface IRewardPolicy {
     function claim() external;
 }
 
+interface ISimpleStakingRewardNotifier {
+    function onStakeBalanceChanged(address account, uint256 oldStake, uint256 newStake) external;
+}
+
+interface ISimpleStaking {
+    struct Tranche {
+        uint256 amount;
+        uint64 releaseTime;
+    }
+
+    function stakingToken() external view returns (address);
+    function minStake() external view returns (uint256);
+    function unstakeDelay() external view returns (uint256);
+    function rewardNotifier() external view returns (address);
+    function totalStaked() external view returns (uint256);
+    function stakeOf(address account) external view returns (uint256);
+    function getUnbondingTranches(address account) external view returns (Tranche[] memory);
+    function currentSnapshotId() external view returns (uint64);
+    function snapshotBlock(uint64 snapshotId) external view returns (uint64);
+
+    function setMinStake(uint256 newMinStake) external;
+    function setUnstakeDelay(uint256 newDelay) external;
+    function setRewardNotifier(address newNotifier) external;
+
+    function stake(uint256 amount) external;
+    function requestUnstake(uint256 amount) external;
+    function withdrawUnstaked() external;
+
+    function snapshot() external returns (uint64 snapshotId);
+    function stakeAt(address account, uint64 snapshotId) external view returns (uint256);
+    function totalStakedAt(uint64 snapshotId) external view returns (uint256);
+}
+
+interface IDailyEpochRewards is IRewardPolicy {
+    function rewardToken() external view returns (address);
+    function staking() external view returns (address);
+    function epochDuration() external view returns (uint256);
+    function lastCheckpointDay() external view returns (uint64);
+    function sync() external;
+    function checkpoint() external returns (uint64 day, uint64 snapshotId, uint256 amount);
+}
+
 interface IProtocolConfig {
     // Committee sizing
     function baseCommitteeSize() external view returns (uint32);
