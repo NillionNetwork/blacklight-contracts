@@ -339,13 +339,9 @@ contract EmissionsController is ReentrancyGuard, Ownable {
         emit EpochDistributed(epochId, amount, distributed, amount - distributed, msg.sender);
     }
 
-    function _payout(
-        uint256 epochId,
-        Recipient memory r,
-        uint256 share,
-        uint256 nativeValue,
-        bytes memory bridgeData
-    ) internal {
+    function _payout(uint256 epochId, Recipient memory r, uint256 share, uint256 nativeValue, bytes memory bridgeData)
+        internal
+    {
         if (r.isL2) {
             bridge.depositERC20To{value: nativeValue}(address(token), l2Token, r.addr, share, l2GasLimit, bridgeData);
         } else {
@@ -431,11 +427,11 @@ contract EmissionsController is ReentrancyGuard, Ownable {
         if (totalExplicitValue != suppliedValue) revert NativeValueSumMismatch(totalExplicitValue, suppliedValue);
     }
 
-    function _nativeValueForL2Payout(
-        uint256 l2PayoutIndex,
-        uint256 l2PayoutCount,
-        uint256[] memory l2NativeValues
-    ) internal view returns (uint256) {
+    function _nativeValueForL2Payout(uint256 l2PayoutIndex, uint256 l2PayoutCount, uint256[] memory l2NativeValues)
+        internal
+        view
+        returns (uint256)
+    {
         if (l2NativeValues.length != 0) {
             return l2NativeValues[l2PayoutIndex];
         }
