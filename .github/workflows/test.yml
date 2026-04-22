@@ -27,3 +27,22 @@ jobs:
 
       - name: Run tests
         run: forge test -vvv
+
+  fork-test:
+    name: Fork Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Run fork tests
+        env:
+          L1_RPC_URL: "https://ethereum-sepolia-rpc.publicnode.com"
+          L1_NIL_ADDRESS: "0xfa718d54f31bcf49CcaC3a79C276fa87d11E2F44"
+        run: forge test --match-contract NillionTokenOwnerForkTest -vvv
