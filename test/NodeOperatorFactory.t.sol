@@ -188,6 +188,9 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         vm.prank(userB);
         factory.setMyRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
 
+        // Warp past harvest grace period
+        vm.warp(block.timestamp + factory.harvestGracePeriod() + 1);
+
         // Mint reward tokens to each user's bound operator
         address boundOpA = factory.userToOperator(userA);
         address boundOpB = factory.userToOperator(userB);
@@ -221,6 +224,7 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         // Switch to WithdrawToUser so fees go to factory and net to user
         vm.prank(userA);
         factory.setMyRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
+        vm.warp(block.timestamp + factory.harvestGracePeriod() + 1);
 
         uint256 factoryBalBefore = stakeToken.balanceOf(address(factory));
         uint256 userABalBefore = stakeToken.balanceOf(userA);
@@ -364,6 +368,9 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         factory.setMyRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
         vm.prank(userB);
         factory.setMyRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
+
+        // Warp past harvest grace period
+        vm.warp(block.timestamp + factory.harvestGracePeriod() + 1);
 
         address boundOpA = factory.userToOperator(userA);
         address boundOpB = factory.userToOperator(userB);
@@ -538,6 +545,157 @@ contract NodeOperatorFactoryTest is BlacklightFixture {
         vm.expectEmit(false, false, false, false);
         emit NodeOperatorFactory.HarvestFailed(address(0), "");
         factory.harvestAllRewards();
+    }
+
+    // ──────────────────────────────────────────────
+    // Permissionless harvest grace period
+    // ──────────────────────────────────────────────
+
+    function test_harvestGracePeriod_permissionlessHarvestBlockedAfterBehaviorChange() public {
+        _approvePredictedStaker(nodeA);
+        address opAddr = factory.addNode(nodeA);
+
+        stakeToken.mint(userA, 2_000_000e6);
+        vm.prank(userA);
+        stakeToken.approve(address(factory), type(uint256).max);
+        vm.prank(userA);
+        factory.stake(STAKE_AMOUNT);
+
+        // User changes behavior to WithdrawToUser
+        vm.prank(userA);
+        factory.setMyRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
+
+        // Mint rewards to operator
+        stakeToken.mint(opAddr, 1_000e6);
+
+        // Permissionless harvest should revert within grace period
+        vm.expectRevert(NodeOperatorFactory.HarvestGracePeriodActive.selector);
+        factory.harvestRewards(opAddr);
+    }
+
+    function test_harvestGracePeriod_userCanStillClaimDuringGracePeriod() public {
+        _approvePredictedStaker(nodeA);
+        address opAddr = factory.addNode(nodeA);
+
+        stakeToken.mint(userA, 2_000_000e6);
+        vm.prank(userA);
+        stakeToken.approve(address(factory), type(uint256).max);
+        vm.prank(userA);
+        factory.stake(STAKE_AMOUNT);
+
+        vm.prank(userA);
+        factory.setMyRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
+
+        stakeToken.mint(opAddr, 1_000e6);
+
+        // User-initiated claim should still work during grace period
+        uint256 balBefore = stakeToken.balanceOf(userA);
+        vm.prank(userA);
+        factory.claimRewards();
+        assertEq(stakeToken.balanceOf(userA) - balBefore, 1_000e6);
+    }
+
+    function test_harvestGracePeriod_permissionlessHarvestWorksAfterGracePeriod() public {
+        _approvePredictedStaker(nodeA);
+        address opAddr = factory.addNode(nodeA);
+
+        stakeToken.mint(userA, 2_000_000e6);
+        vm.prank(userA);
+        stakeToken.approve(address(factory), type(uint256).max);
+        vm.prank(userA);
+        factory.stake(STAKE_AMOUNT);
+
+        vm.prank(userA);
+        factory.setMyRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
+
+        // Warp past grace period
+        vm.warp(block.timestamp + factory.harvestGracePeriod() + 1);
+
+        stakeToken.mint(opAddr, 1_000e6);
+
+        // Permissionless harvest should work after grace period
+        uint256 balBefore = stakeToken.balanceOf(userA);
+        factory.harvestRewards(opAddr);
+        assertEq(stakeToken.balanceOf(userA) - balBefore, 1_000e6);
+    }
+
+    function test_harvestGracePeriod_batchHarvestSkipsDuringGracePeriod() public {
+        _approvePredictedStaker(nodeA);
+        _approvePredictedStaker(nodeB);
+        factory.addNode(nodeA);
+        factory.addNode(nodeB);
+
+        stakeToken.mint(userA, 2_000_000e6);
+        stakeToken.mint(userB, 2_000_000e6);
+        vm.prank(userA);
+        stakeToken.approve(address(factory), type(uint256).max);
+        vm.prank(userB);
+        stakeToken.approve(address(factory), type(uint256).max);
+
+        vm.prank(userA);
+        factory.stake(STAKE_AMOUNT);
+        vm.prank(userB);
+        factory.stake(STAKE_AMOUNT);
+
+        // Both users change behavior — both operators enter grace period
+        vm.prank(userA);
+        factory.setMyRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
+        vm.prank(userB);
+        factory.setMyRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
+
+        // Use actual bound operators (LIFO binding means order may differ from addNode)
+        address opAAddr = factory.userToOperator(userA);
+        address opBAddr = factory.userToOperator(userB);
+        stakeToken.mint(opAAddr, 1_000e6);
+        stakeToken.mint(opBAddr, 500e6);
+
+        // Batch harvest should skip both (grace period active) without reverting
+        factory.harvestAllRewards();
+
+        // Rewards should still be sitting on the operators (not harvested)
+        assertEq(stakeToken.balanceOf(opAAddr), 1_000e6);
+        assertEq(stakeToken.balanceOf(opBAddr), 500e6);
+    }
+
+    function test_setHarvestGracePeriod_ownerCanUpdate() public {
+        factory.setHarvestGracePeriod(30);
+        assertEq(factory.harvestGracePeriod(), 30);
+    }
+
+    function test_setHarvestGracePeriod_revertsAboveMax() public {
+        uint256 max = factory.MAX_HARVEST_GRACE_PERIOD();
+        vm.expectRevert(NodeOperatorFactory.GracePeriodTooLong.selector);
+        factory.setHarvestGracePeriod(max + 1);
+    }
+
+    function test_setHarvestGracePeriod_revertsForNonOwner() public {
+        vm.prank(address(0xDEAD));
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", address(0xDEAD)));
+        factory.setHarvestGracePeriod(30);
+    }
+
+    function test_setHarvestGracePeriod_zeroDisablesGracePeriod() public {
+        _approvePredictedStaker(nodeA);
+        address opAddr = factory.addNode(nodeA);
+
+        stakeToken.mint(userA, 2_000_000e6);
+        vm.prank(userA);
+        stakeToken.approve(address(factory), type(uint256).max);
+        vm.prank(userA);
+        factory.stake(STAKE_AMOUNT);
+
+        vm.prank(userA);
+        factory.setMyRewardBehavior(INodeOperator.RewardBehavior.WithdrawToUser);
+
+        // Disable grace period
+        factory.setHarvestGracePeriod(0);
+
+        stakeToken.mint(opAddr, 1_000e6);
+
+        // Permissionless harvest works immediately
+        uint256 balBefore = stakeToken.balanceOf(userA);
+        factory.harvestRewards(opAddr);
+        assertEq(stakeToken.balanceOf(userA) - balBefore, 1_000e6);
     }
 
     // ──────────────────────────────────────────────
