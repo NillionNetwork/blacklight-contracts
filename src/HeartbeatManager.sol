@@ -504,8 +504,9 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         }
 
         try IValidationRegistry(registry).onHeartbeatFinalized(rawHTXHash, response, heartbeatKey) {
-            // success
-        } catch (bytes memory lowLevelData) {
+        // success
+        }
+        catch (bytes memory lowLevelData) {
             emit ValidationRegistryCallbackFailed(heartbeatKey, round, lowLevelData);
         }
     }
