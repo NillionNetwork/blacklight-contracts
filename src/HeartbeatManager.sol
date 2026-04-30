@@ -122,6 +122,7 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
 
     IProtocolConfig public config;
     uint256 public slashingGasLimit;
+    address public validationRegistry;
 
     mapping(bytes32 => Heartbeat) public heartbeats;
     mapping(bytes32 => mapping(uint8 => RoundInfo)) public rounds;
@@ -156,6 +157,8 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         bytes32 indexed heartbeatKey, uint8 indexed round, uint256 voterCount, uint256 totalWeight
     );
     event SlashingGasLimitUpdated(uint256 oldLimit, uint256 newLimit);
+    event ValidationRegistryUpdated(address indexed oldRegistry, address indexed newRegistry);
+    event ValidationRegistryCallbackFailed(bytes32 indexed heartbeatKey, uint8 indexed round, bytes lowLevelData);
 
     constructor(IProtocolConfig _config, address _owner) Ownable(_owner) EIP712("HeartbeatManager", "1") {
         if (address(_config) == address(0)) revert ZeroAddress();
@@ -180,6 +183,14 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         if (newLimit == 0) revert InvalidSlashingGasLimit();
         emit SlashingGasLimitUpdated(slashingGasLimit, newLimit);
         slashingGasLimit = newLimit;
+    }
+
+    /// @notice Sets the ValidationRegistry that is notified when heartbeat rounds are finalized.
+    /// @dev Pass address(0) to disable notifications. The callback is best-effort: a failure or
+    /// revert in the registry must not block round finalization.
+    function setValidationRegistry(address newRegistry) external onlyOwner {
+        emit ValidationRegistryUpdated(validationRegistry, newRegistry);
+        validationRegistry = newRegistry;
     }
 
     function pause() external onlyOwner {
@@ -471,6 +482,32 @@ contract HeartbeatManager is Pausable, ReentrancyGuard, Ownable, EIP712, AccessC
         emit RoundFinalized(heartbeatKey, round, outcome);
 
         _notifySlashing(heartbeatKey, round, r, outcome);
+        _notifyValidationRegistry(heartbeatKey, round, w.rawHTXHash, outcome);
+    }
+
+    function _notifyValidationRegistry(
+        bytes32 heartbeatKey,
+        uint8 round,
+        bytes32 rawHTXHash,
+        ISlashingPolicy.Outcome outcome
+    ) internal {
+        address registry = validationRegistry;
+        if (registry == address(0)) return;
+
+        uint8 response;
+        if (outcome == ISlashingPolicy.Outcome.ValidThreshold) {
+            response = 100;
+        } else if (outcome == ISlashingPolicy.Outcome.InvalidThreshold) {
+            response = 0;
+        } else {
+            response = 50;
+        }
+
+        try IValidationRegistry(registry).onHeartbeatFinalized(rawHTXHash, response, heartbeatKey) {
+            // success
+        } catch (bytes memory lowLevelData) {
+            emit ValidationRegistryCallbackFailed(heartbeatKey, round, lowLevelData);
+        }
     }
 
     function _notifySlashing(bytes32 heartbeatKey, uint8 round, RoundInfo storage r, ISlashingPolicy.Outcome outcome)
