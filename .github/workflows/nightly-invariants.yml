@@ -1,0 +1,30 @@
+name: Nightly Invariants
+
+on:
+  schedule:
+    # Daily at 03:00 UTC
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  invariants:
+    name: Forge Invariant Tests (nightly profile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Build
+        run: forge build
+
+      - name: Run invariant tests (nightly profile)
+        env:
+          FOUNDRY_PROFILE: nightly
+        run: forge test --match-path "test/invariants/*" -vvv
