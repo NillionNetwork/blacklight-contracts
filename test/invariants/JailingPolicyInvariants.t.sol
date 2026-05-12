@@ -282,7 +282,7 @@ contract JailingPolicyInvariants is StdInvariant, BlacklightFixture {
         (bool set,, bytes32 policyRoot,,,) = jailingPolicy.roundRecord(hbKey, r);
         if (!set) return;
 
-        (,,,,,, /*committeeSize*/ /*snapshotId*/, bytes32 mgrRoot,,,,,,,,,,,) = manager.rounds(hbKey, r);
+        (,,,,,,/*committeeSize*/ /*snapshotId*/, bytes32 mgrRoot,,,,,,,,,,,) = manager.rounds(hbKey, r);
         assertEq(policyRoot, mgrRoot, "policy committee root != manager root");
     }
 }
