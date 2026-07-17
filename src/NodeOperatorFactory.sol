@@ -28,6 +28,8 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     error TokenMismatch();
     error StakerNotPreapproved();
     error StakingOperatorsQueryFailed();
+    error HarvestGracePeriodActive();
+    error GracePeriodTooLong();
 
     // ──────────────────────────────────────────────
     // Events
@@ -47,6 +49,7 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         uint256 oldWithdrawBps, uint256 newWithdrawBps, uint256 oldRestakeBps, uint256 newRestakeBps
     );
     event OperatorConfigSynced(address indexed operatorAddr);
+    event HarvestGracePeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
 
     // ──────────────────────────────────────────────
     // Shared configuration
@@ -59,6 +62,8 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     uint256 public defaultRestakeFeeBps = 1500;
     uint256 public minStake;
     uint256 public constant MAX_FEE_BPS = 5000; // hard cap: 50%
+    uint256 public constant MAX_HARVEST_GRACE_PERIOD = 10 minutes;
+    uint256 public harvestGracePeriod = 1 minutes;
 
     // ──────────────────────────────────────────────
     // Registry state
@@ -76,6 +81,9 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
 
     // Parallel operator list (same indices as _allNodes)
     address[] private _allOperators;
+
+    // Grace period: timestamp of last reward behavior change per operator
+    mapping(address => uint256) private _behaviorChangedAt;
 
     // Free node list with O(1) add/pop
     address[] private _freeNodes;
@@ -132,6 +140,12 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     function setMinStake(uint256 newMinStake) external onlyOwner {
         emit MinStakeUpdated(minStake, newMinStake);
         minStake = newMinStake;
+    }
+
+    function setHarvestGracePeriod(uint256 newPeriod) external onlyOwner {
+        if (newPeriod > MAX_HARVEST_GRACE_PERIOD) revert GracePeriodTooLong();
+        emit HarvestGracePeriodUpdated(harvestGracePeriod, newPeriod);
+        harvestGracePeriod = newPeriod;
     }
 
     /// @notice Transfers ownership of a NodeOperator to a new address (e.g. a replacement factory).
@@ -283,6 +297,7 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         address operatorAddr = userToOperator[msg.sender];
         if (operatorAddr == address(0)) revert NoBoundNodeOperator();
         INodeOperator(operatorAddr).setRewardBehavior(behavior);
+        _behaviorChangedAt[operatorAddr] = block.timestamp;
     }
 
     function pendingRewards(address user) external view returns (uint256) {
@@ -294,9 +309,13 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
     }
 
     /// @notice Intentionally permissionless so keepers/bots can trigger harvesting.
+    /// @dev Reverts during the grace period after a reward behavior change to prevent front-running.
     function harvestRewards(address operatorAddr) external nonReentrant {
         if (operatorAddr == address(0)) revert ZeroAddress();
         if (operatorToNode[operatorAddr] == address(0)) revert InvalidNodeOperator();
+        if (block.timestamp < _behaviorChangedAt[operatorAddr] + harvestGracePeriod) {
+            revert HarvestGracePeriodActive();
+        }
         INodeOperator(operatorAddr).harvestRewards();
     }
 
@@ -316,9 +335,14 @@ contract NodeOperatorFactory is Ownable, ReentrancyGuard {
         uint256 end = offset + limit;
         if (end > total) end = total;
         for (uint256 i = offset; i < end;) {
-            try INodeOperator(_allOperators[i]).harvestRewards() {}
-            catch (bytes memory reason) {
-                emit HarvestFailed(_allOperators[i], reason);
+            address op = _allOperators[i];
+            if (block.timestamp < _behaviorChangedAt[op] + harvestGracePeriod) {
+                emit HarvestFailed(op, abi.encodeWithSelector(HarvestGracePeriodActive.selector));
+            } else {
+                try INodeOperator(op).harvestRewards() {}
+                catch (bytes memory reason) {
+                    emit HarvestFailed(op, reason);
+                }
             }
             unchecked {
                 ++i;
