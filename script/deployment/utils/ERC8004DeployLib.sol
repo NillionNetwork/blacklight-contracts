@@ -53,8 +53,17 @@ library ERC8004DeployLib {
         if (heartbeatManager != address(0)) {
             deployed.validation.setHeartbeatManager(heartbeatManager);
 
+            HeartbeatManager hm = HeartbeatManager(heartbeatManager);
+            if (hm.owner() == deployer) {
+                hm.setValidationRegistry(address(deployed.validation));
+                console.log("Wired ValidationRegistry on HeartbeatManager");
+            } else {
+                console.log("WARNING: Deployer is not HeartbeatManager owner, cannot wire ValidationRegistry");
+                console.log("Please wire manually:");
+                console.log("  HeartbeatManager.setValidationRegistry(ValidationRegistry)");
+            }
+
             if (!skipHeartbeatRole) {
-                HeartbeatManager hm = HeartbeatManager(heartbeatManager);
                 bytes32 submitterRole = hm.HEARTBEAT_SUBMITTER_ROLE();
                 bytes32 adminRole = hm.HEARTBEAT_SUBMITTER_ADMIN_ROLE();
                 if (hm.hasRole(adminRole, deployer) || hm.hasRole(hm.DEFAULT_ADMIN_ROLE(), deployer)) {
