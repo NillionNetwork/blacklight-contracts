@@ -185,8 +185,6 @@ contract JailingPolicy is ISlashingPolicy {
 
         uint8 verdict = uint8(packed & VERDICT_MASK);
 
-        if (verdict == 3) return false; // Dictates whether voting inconclusive is ever a jailable offense
-
         if (outcome == Outcome.Inconclusive) return false;
 
         if (outcome == Outcome.ValidThreshold) {

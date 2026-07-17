@@ -83,46 +83,57 @@ contract JailingPolicyTest is BlacklightFixture {
         }
     }
 
-    function test_inconclusiveVote_notJailedOnValidOutcome() public {
+    function test_errorVoter_jailedOnValidOutcome() public {
         (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
 
         for (uint256 i = 0; i < 5; i++) {
             _vote(hbKey, round, members, members[i], 1);
         }
-        _vote(hbKey, round, members, members[5], 3);
+        _vote(hbKey, round, members, members[5], 3); // error vote
 
         _finalizeDefault(hbKey, round);
         assertEq(uint8(manager.roundOutcome(hbKey, round)), uint8(ISlashingPolicy.Outcome.ValidThreshold));
 
         jailingPolicy.enforceJailFromMembers(hbKey, round, members);
 
-        assertFalse(stakingOps.isJailed(members[5]));
-        assertFalse(jailingPolicy.enforced(hbKey, round, members[5]));
-
-        bytes32[] memory proof = _proofForMember(hbKey, round, members, members[5]);
-        vm.expectRevert(JailingPolicy.NotJailable.selector);
-        jailingPolicy.enforceJail(hbKey, round, members[5], proof);
+        assertTrue(stakingOps.isJailed(members[5]), "error voter should be jailed on conclusive valid round");
+        assertTrue(jailingPolicy.enforced(hbKey, round, members[5]));
     }
 
-    function test_inconclusiveVote_notJailedOnInvalidOutcome() public {
+    function test_errorVoter_jailedOnInvalidOutcome() public {
         (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
 
         for (uint256 i = 0; i < 5; i++) {
             _vote(hbKey, round, members, members[i], 2);
         }
-        _vote(hbKey, round, members, members[5], 3);
+        _vote(hbKey, round, members, members[5], 3); // error vote
 
         _finalizeDefault(hbKey, round);
         assertEq(uint8(manager.roundOutcome(hbKey, round)), uint8(ISlashingPolicy.Outcome.InvalidThreshold));
 
         jailingPolicy.enforceJailFromMembers(hbKey, round, members);
 
-        assertFalse(stakingOps.isJailed(members[5]));
-        assertFalse(jailingPolicy.enforced(hbKey, round, members[5]));
+        assertTrue(stakingOps.isJailed(members[5]), "error voter should be jailed on conclusive invalid round");
+        assertTrue(jailingPolicy.enforced(hbKey, round, members[5]));
+    }
 
-        bytes32[] memory proof = _proofForMember(hbKey, round, members, members[5]);
+    function test_errorVoter_notJailedOnInconclusiveOutcome() public {
+        (bytes32 hbKey, uint8 round,,, address[] memory members) = _submitPointerAndGetRound();
+
+        // only 1 vote => no quorum -> inconclusive
+        _vote(hbKey, round, members, members[0], 1);
+        _vote(hbKey, round, members, members[1], 3); // error vote
+
+        (,,,,,,,,, uint64 deadline,,,,,,,,,) = manager.rounds(hbKey, round);
+        vm.warp(uint256(deadline) + 1);
+        manager.escalateOrExpire(hbKey, _defaultRawHTX(1));
+
+        assertEq(uint8(manager.roundOutcome(hbKey, round)), uint8(ISlashingPolicy.Outcome.Inconclusive));
+
+        // error voter should NOT be jailable on inconclusive
+        bytes32[] memory proof = _proofForMember(hbKey, round, members, members[1]);
         vm.expectRevert(JailingPolicy.NotJailable.selector);
-        jailingPolicy.enforceJail(hbKey, round, members[5], proof);
+        jailingPolicy.enforceJail(hbKey, round, members[1], proof);
     }
 
     function test_enforceJailFromMembers_revertsOnRootMismatchOrUnsorted() public {
