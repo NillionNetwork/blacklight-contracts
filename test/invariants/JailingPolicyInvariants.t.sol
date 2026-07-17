@@ -216,8 +216,11 @@ contract JailingPolicyInvariants is StdInvariant, BlacklightFixture {
         assertEq(count, handler.ghostEnforcedCount(), "enforced count != ghost");
     }
 
-    /// @notice Operators that voted with the winning verdict (or the explicit
-    /// inconclusive verdict 3) are never enforced.
+    /// @notice Operators that voted with the winning verdict on a conclusive
+    /// round are never enforced. Voting the error verdict (3) is a jailable
+    /// offense on conclusive rounds, so verdict 3 gets no exemption here; its
+    /// only safe case (an inconclusive outcome) is covered by
+    /// invariant_inconclusiveOutcomeNoEnforcement.
     function invariant_correctVotersNeverEnforced() public view {
         bytes32 hbKey = handler.heartbeatKey();
         uint8 r = handler.round();
@@ -229,10 +232,6 @@ contract JailingPolicyInvariants is StdInvariant, BlacklightFixture {
             if (!handler.ghostVoted(op)) continue;
             uint8 v = handler.ghostVoteVerdict(op);
 
-            if (v == 3) {
-                assertFalse(jailingPolicy.enforced(hbKey, r, op), "verdict==3 was enforced");
-                continue;
-            }
             if (outcome == ISlashingPolicy.Outcome.ValidThreshold && v == 1) {
                 assertFalse(jailingPolicy.enforced(hbKey, r, op), "valid voter enforced");
             }
