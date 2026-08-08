@@ -81,11 +81,16 @@ library BlacklightCoreDeployLib {
             emissionsSchedule[i] = 1000e18;
         }
 
+        EmissionsController.Recipient memory sink =
+            EmissionsController.Recipient({addr: address(rewardPolicy), bps: 0, isL2: true});
+        EmissionsController.Recipient[] memory initial = new EmissionsController.Recipient[](0);
+
         emissionsController = new EmissionsController(
             IERC20Mintable(address(token)),
             IL1StandardBridge(address(mockBridge)),
             address(token),
-            address(rewardPolicy),
+            sink,
+            initial,
             block.timestamp,
             7 days,
             200000,
